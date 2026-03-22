@@ -1,0 +1,9 @@
+﻿
+> renovation-management-next@0.1.0 build C:\Users\johnny\Downloads\tpt-renovation-management
+> next build
+
+Γû▓ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+ΓÇëELIFECYCLEΓÇë Command failed with exit code 1.

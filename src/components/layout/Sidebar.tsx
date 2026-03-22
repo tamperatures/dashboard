@@ -3,17 +3,11 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut, useSession } from 'next-auth/react';
 import { cn } from '@/lib/utils';
 import {
-    LayoutDashboard,
-    Users,
-    FolderKanban,
-    CalendarDays,
-    FileText,
-    Settings,
-    HardHat,
-    Menu,
-    X
+    LayoutDashboard, Users, FolderKanban, CalendarDays,
+    FileText, Settings, HardHat, Menu, X, LogOut, UserCog, Shield,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -23,94 +17,88 @@ const NAV_ITEMS = [
     { href: '/crm', label: '客戶管理', icon: Users },
     { href: '/calendar', label: '工程日程', icon: CalendarDays },
     { href: '/media', label: '文件資料', icon: FileText },
+    { href: '/employees', label: '員工管理', icon: UserCog, adminOnly: true },
     { href: '/settings', label: '系統設定', icon: Settings },
-];
+] as const;
+
+type NavItem = { href: string; label: string; icon: React.ElementType; adminOnly?: boolean };
 
 export function Sidebar() {
     const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
+    const { data: session } = useSession();
+
+    const userRole = (session?.user as any)?.role || 'staff';
+    const userName = session?.user?.name || '用戶';
 
     const toggleSidebar = () => setIsOpen(!isOpen);
 
+    const filteredNavItems = (NAV_ITEMS as unknown as NavItem[]).filter(
+        (item) => !item.adminOnly || userRole === 'admin'
+    );
+
     const SidebarContent = () => (
-        <div className="flex flex-col h-full py-6">
-            {/* App Logo */}
-            <div className="mb-8 w-full px-6 flex items-center justify-between gap-3">
+        <div className="flex flex-col h-full py-5">
+            {/* Logo */}
+            <div className="mb-6 w-full px-5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center">
-                        <HardHat className="h-4 w-4 text-white" />
+                    <div className="w-9 h-9 rounded-xl bg-[#1D1D1F] flex items-center justify-center shadow-md">
+                        <HardHat className="h-[18px] w-[18px] text-white" />
                     </div>
                     <div>
-                        <h1 className="text-sm font-bold tracking-tight text-slate-900 leading-none">適度裝修</h1>
-                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">工程管理系統</p>
+                        <h1 className="text-[15px] font-bold tracking-tight text-[#1D1D1F] leading-none">適度裝修</h1>
+                        <p className="text-[10px] text-[#86868B] font-medium mt-0.5">工程管理系統</p>
                     </div>
                 </div>
-                {/* Mobile Close Button */}
-                <button
-                    onClick={toggleSidebar}
-                    className="md:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                    <X size={20} />
+                <button onClick={toggleSidebar} className="md:hidden p-2 text-[#86868B] hover:bg-[#F5F5F7] rounded-xl transition-colors">
+                    <X size={18} />
                 </button>
-            </div>
-
-            {/* Section Label */}
-            <div className="px-6 mb-2">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">主選單</span>
             </div>
 
             {/* Navigation */}
             <nav className="w-full px-3 space-y-1 flex-1 overflow-y-auto">
-                {NAV_ITEMS.map((item) => {
+                {filteredNavItems.map((item) => {
                     const isActive = pathname === item.href;
                     const Icon = item.icon;
-
                     return (
                         <Link
                             key={item.href}
                             href={item.href}
                             onClick={() => setIsOpen(false)}
                             className={cn(
-                                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 group',
+                                'flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 group',
                                 isActive
-                                    ? 'bg-slate-900 text-white shadow-sm font-medium'
-                                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                                    ? 'bg-[#0071E3] text-white shadow-sm shadow-[#0071E3]/25'
+                                    : 'text-[#424245] hover:bg-[#E8E8ED] active:scale-[0.98]'
                             )}
                         >
-                            <Icon
-                                size={16}
-                                className={cn(
-                                    'shrink-0',
-                                    isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'
-                                )}
-                                strokeWidth={isActive ? 2.5 : 2}
-                            />
+                            <Icon size={20} className={cn('shrink-0 transition-colors', isActive ? 'text-white' : 'text-[#86868B] group-hover:text-[#424245]')} strokeWidth={isActive ? 2.2 : 1.8} />
                             <span>{item.label}</span>
                         </Link>
                     );
                 })}
             </nav>
 
-            {/* Bottom Section */}
-            <div className="w-full px-5 mt-auto space-y-4 pt-4">
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-                        <span>本月項目</span>
-                        <span>8 / 15</span>
+            {/* User */}
+            <div className="w-full px-4 mt-auto pt-4">
+                <div className="p-3 rounded-2xl bg-[#F5F5F7] flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#E8E8ED] overflow-hidden shrink-0">
+                        <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${userName}`} alt="Avatar" className="w-full h-full object-cover" />
                     </div>
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-slate-900 rounded-full" style={{ width: '53%' }} />
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-semibold text-[#1D1D1F] leading-none truncate">{userName}</p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                            {userRole === 'admin' && <Shield className="h-2.5 w-2.5 text-amber-500" />}
+                            <p className="text-[10px] text-[#86868B] truncate">{userRole === 'admin' ? '管理員' : '員工'}</p>
+                        </div>
                     </div>
-                </div>
-
-                <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0">
-                        <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Angel" alt="Avatar" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-700 leading-none truncate">Angel</p>
-                        <p className="text-xs text-slate-400 mt-0.5 truncate">管理員</p>
-                    </div>
+                    <button
+                        onClick={() => signOut({ callbackUrl: '/login' })}
+                        className="p-2 rounded-xl text-[#86868B] hover:text-red-500 hover:bg-red-50 transition-all shrink-0"
+                        title="登出"
+                    >
+                        <LogOut size={15} />
+                    </button>
                 </div>
             </div>
         </div>
@@ -118,41 +106,21 @@ export function Sidebar() {
 
     return (
         <>
-            {/* Mobile Hamburger Button (fixed top left) */}
-            <div className="md:hidden fixed top-0 left-0 z-50 p-2.5">
-                <button
-                    onClick={toggleSidebar}
-                    className="p-2 bg-white/80 backdrop-blur-md border border-slate-200 shadow-sm rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
-                >
-                    <Menu size={20} />
+            <div className="md:hidden fixed top-0 left-0 z-50 p-3">
+                <button onClick={toggleSidebar} className="p-2.5 bg-white/90 backdrop-blur-xl border border-[#D1D1D6]/50 shadow-lg shadow-black/5 rounded-2xl text-[#1D1D1F] hover:bg-white transition-all active:scale-95">
+                    <Menu size={18} />
                 </button>
             </div>
 
-            {/* Desktop Sidebar */}
-            <aside className="hidden md:flex w-[240px] shrink-0 border-r border-slate-200 bg-white min-h-screen flex-col sticky top-0 h-screen">
+            <aside className="hidden md:flex w-[250px] shrink-0 border-r border-[#D1D1D6]/40 bg-white/80 backdrop-blur-2xl min-h-screen flex-col sticky top-0 h-screen">
                 <SidebarContent />
             </aside>
 
-            {/* Mobile Sidebar Overlay */}
             <AnimatePresence>
                 {isOpen && (
                     <>
-                        {/* Backdrop */}
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setIsOpen(false)}
-                            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 md:hidden"
-                        />
-                        {/* Sliding Drawer */}
-                        <motion.aside
-                            initial={{ x: '-100%' }}
-                            animate={{ x: 0 }}
-                            exit={{ x: '-100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            className="fixed top-0 left-0 w-[280px] h-full bg-white shadow-2xl z-50 md:hidden flex flex-col"
-                        >
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsOpen(false)} className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 md:hidden" />
+                        <motion.aside initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 28, stiffness: 320 }} className="fixed top-0 left-0 w-[280px] h-full bg-white shadow-2xl z-50 md:hidden flex flex-col rounded-r-3xl">
                             <SidebarContent />
                         </motion.aside>
                     </>

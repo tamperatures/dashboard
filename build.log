@@ -1,0 +1,10 @@
+
+> renovation-management-next@0.1.0 build C:\Users\johnny\Downloads\tpt-renovation-management
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+ ELIFECYCLE  Command failed with exit code 3221225477.

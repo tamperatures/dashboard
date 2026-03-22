@@ -13,7 +13,14 @@ export async function POST(request: NextRequest) {
         }
 
         // Validate file type
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'video/mp4', 'video/quicktime'];
+        const allowedTypes = [
+            'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+            'video/mp4', 'video/quicktime',
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ];
         if (!allowedTypes.includes(file.type)) {
             return NextResponse.json({ error: '不支援的檔案類型' }, { status: 400 });
         }
