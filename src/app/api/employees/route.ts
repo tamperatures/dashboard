@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db as firestore } from '@/lib/firebase-admin';
-import { auth } from '@/lib/auth';
-import bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
+import { db as firestore, adminAuth, auth } from '@/lib/firebase-admin';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -14,7 +11,7 @@ export async function GET() {
     }
 
     const snapshot = await firestore.collection('users').get();
-    const users = snapshot.docs.map(doc => {
+    const users = snapshot.docs.map((doc: any) => {
         const data = doc.data();
         const { password, ...rest } = data;
         return rest;
@@ -51,31 +48,38 @@ export async function POST(request: NextRequest) {
 
     const usersRef = firestore.collection('users');
 
-    // Check email uniqueness
+    // Check email uniqueness locally just in case, though Firebase Auth will also throw
     const existing = await usersRef.where('email', '==', email).get();
     if (!existing.empty) {
         return NextResponse.json({ error: '此電郵已被使用' }, { status: 400 });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    try {
+        const firebaseUser = await adminAuth.createUser({
+            email,
+            password,
+            displayName: name
+        });
 
-    const newUser = {
-        id: uuidv4(),
-        name,
-        email,
-        password: hashedPassword,
-        role: role || 'staff',
-        department: assignedDepartments[0] || '', // legacy compat
-        departments: assignedDepartments,
-        phone: phone || '',
-        position: position || '',
-        mustChangePassword: true,
-        status: 'active' as const,
-        createdAt: new Date().toISOString(),
-    };
+        const newUser = {
+            id: firebaseUser.uid,
+            name,
+            email,
+            role: role || 'staff',
+            department: assignedDepartments[0] || '', // legacy compat
+            departments: assignedDepartments,
+            phone: phone || '',
+            position: position || '',
+            mustChangePassword: true,
+            status: 'active' as const,
+            createdAt: new Date().toISOString(),
+        };
 
-    await usersRef.doc(newUser.id).set(newUser);
+        await usersRef.doc(newUser.id).set(newUser);
 
-    const { password: _, ...userWithoutPassword } = newUser;
-    return NextResponse.json({ user: userWithoutPassword }, { status: 201 });
+        return NextResponse.json({ user: newUser }, { status: 201 });
+    } catch (err: any) {
+        console.error('Error creating user inside Firebase Auth:', err);
+        return NextResponse.json({ error: '建立員工失敗: ' + err.message }, { status: 500 });
+    }
 }

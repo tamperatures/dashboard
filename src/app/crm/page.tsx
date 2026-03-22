@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/components/layout/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -74,9 +74,9 @@ const fadeUp = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transi
 
 /* ───────── Page ───────── */
 export default function CRMPage() {
-    const { data: session } = useSession();
-    const userRole = (session?.user as any)?.role;
-    const userDept = (session?.user as any)?.department;
+    const { user, userData } = useAuth();
+    const userRole = userData?.role || 'staff';
+    const userDept = userData?.department || '';
 
     const [activeTab, setActiveTab] = useState('全部');
     const [search, setSearch] = useState('');

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/components/layout/AuthProvider';
 import { PieChart, Pie, ResponsiveContainer, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,8 +42,8 @@ const STAGE_LABELS: Record<string, string> = {
 
 export default function Dashboard() {
   const router = useRouter();
-  const { data: session } = useSession();
-  const userId = (session?.user as any)?.id;
+  const { user } = useAuth();
+  const userId = user?.uid;
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<TaskEvent[]>([]);
   const [loading, setLoading] = useState(true);

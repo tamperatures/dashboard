@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +10,6 @@ import { motion } from 'framer-motion';
 
 export default function ChangePasswordPage() {
     const router = useRouter();
-    const { update } = useSession();
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
     const [loading, setLoading] = useState(false);
@@ -25,7 +23,6 @@ export default function ChangePasswordPage() {
         try {
             const res = await fetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: password }) });
             if (!res.ok) { const data = await res.json(); throw new Error(data.error || '密碼更新失敗'); }
-            await update({ mustChangePassword: false });
             router.push('/');
         } catch (err: any) { setError(err.message); } finally { setLoading(false); }
     };

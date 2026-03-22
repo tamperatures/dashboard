@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db as firestore } from '@/lib/firebase-admin';
-import { auth } from '@/lib/auth';
-import bcrypt from 'bcryptjs';
+import { db as firestore, adminAuth, auth } from '@/lib/firebase-admin';
 
 // GET /api/employees/[id] - fetch a specific user
 export async function GET(
@@ -61,8 +59,14 @@ export async function PUT(
 
     console.log('updates from body:', body);
 
-    if (name) updates.name = name;
-    if (email) updates.email = email;
+    if (name) {
+        updates.name = name;
+        await adminAuth.updateUser(id, { displayName: name }).catch(() => null);
+    }
+    if (email) {
+        updates.email = email;
+        await adminAuth.updateUser(id, { email }).catch(() => null);
+    }
     if (role && currentUserReq.role === 'admin') {
         console.log('updating role to:', role);
         updates.role = role;
@@ -71,7 +75,10 @@ export async function PUT(
     }
     if (phone !== undefined) updates.phone = phone;
     if (position !== undefined) updates.position = position;
-    if (status) updates.status = status;
+    if (status) {
+        updates.status = status;
+        await adminAuth.updateUser(id, { disabled: status !== 'active' }).catch(() => null);
+    }
     if (departments && currentUserReq.role === 'admin') {
         updates.departments = departments;
         updates.department = departments[0] || ''; // legacy compat
@@ -80,7 +87,7 @@ export async function PUT(
         updates.departments = [department];
     }
     if (password) {
-        updates.password = await bcrypt.hash(password, 10);
+        await adminAuth.updateUser(id, { password }).catch(() => null);
     }
 
     await userRef.update(updates);
@@ -122,6 +129,7 @@ export async function DELETE(
         }
     }
 
+    await adminAuth.deleteUser(id).catch(() => console.error('Failed to delete from Firebase Auth:', id));
     await userRef.delete();
 
     return NextResponse.json({ success: true });

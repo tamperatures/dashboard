@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db as firestore } from '@/lib/firebase-admin';
-import { auth } from '@/lib/auth';
+import { auth } from '@/lib/firebase-admin';
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await auth();

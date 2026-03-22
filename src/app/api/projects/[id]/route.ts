@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db as firestore } from '@/lib/firebase-admin';
-import { auth } from '@/lib/auth';
+import { auth } from '@/lib/firebase-admin';
 import { v4 as uuidv4 } from 'uuid';
 
 /* ───── Department-based field permissions ───── */

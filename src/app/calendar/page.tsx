@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/components/layout/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,8 +49,8 @@ function getFirstDayOfWeek(year: number, month: number) {
 }
 
 export default function CalendarPage() {
-    const { data: session } = useSession();
-    const userRole = (session?.user as any)?.role;
+    const { user, userData } = useAuth();
+    const userRole = userData?.role || 'staff';
 
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());

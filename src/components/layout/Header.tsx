@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/components/layout/AuthProvider';
 import {
     Search, Bell, X, ChevronRight, FolderKanban,
     Clock, FileText, ArrowRight, Loader2, Command,
@@ -42,11 +42,11 @@ interface SearchResult {
 }
 
 export function Header() {
-    const { data: session, update } = useSession();
+    const { user, userData } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
-    const userRole = (session?.user as any)?.role;
-    const userName = session?.user?.name || '用戶';
+    const userRole = userData?.role || 'staff';
+    const userName = userData?.name || user?.displayName || user?.email?.split('@')[0] || '用戶';
 
     // ── Search State ──
     const [searchOpen, setSearchOpen] = useState(false);
@@ -63,49 +63,7 @@ export function Header() {
 
     // ── Breadcrumbs ──
     // ── Session Sync (Auto-Update Role/Department) ──
-    useEffect(() => {
-        const userId = (session?.user as any)?.id;
-        if (!userId) return;
-
-        const checkSession = async () => {
-            try {
-                const res = await fetch(`/api/employees/${userId}?t=${Date.now()}`);
-                if (!res.ok) return;
-                const data = await res.json();
-                const dbUser = data.user;
-                if (!dbUser) return;
-
-                let needsUpdate = false;
-                const newSessionData: any = {};
-
-                const currentRole = (session?.user as any)?.role;
-                if (dbUser.role && dbUser.role !== currentRole) {
-                    needsUpdate = true;
-                    newSessionData.role = dbUser.role;
-                }
-
-                const currentDepts = JSON.stringify((session?.user as any)?.departments || []);
-                const dbDepts = JSON.stringify(dbUser.departments || (dbUser.department ? [dbUser.department] : []));
-
-                if (currentDepts !== dbDepts) {
-                    needsUpdate = true;
-                    newSessionData.departments = JSON.parse(dbDepts);
-                    if (dbUser.department) {
-                        newSessionData.department = dbUser.department;
-                    }
-                }
-
-                if (needsUpdate) {
-                    await update(newSessionData);
-                }
-            } catch (err) {
-                console.error('Failed to sync session data', err);
-            }
-        };
-
-        checkSession();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [(session?.user as any)?.id]);
+    // Handled natively by Firebase Auth ID Token updates now.
     const getBreadcrumbs = () => {
         // Handle dynamic project routes
         if (pathname.startsWith('/projects/') && pathname !== '/projects') {

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { HardHat, Mail, Lock, Loader2, AlertCircle, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -21,12 +22,19 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            const result = await signIn('credentials', { email, password, redirect: false });
-            if (result?.error) { setError('帳號或密碼不正確'); setLoading(false); return; }
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const token = await userCredential.user.getIdToken();
+            document.cookie = `firebaseToken=${token}; path=/; max-age=${14 * 24 * 60 * 60}; ${process.env.NODE_ENV === 'production' ? 'secure;' : ''}`;
+            
             router.push('/');
             router.refresh();
-        } catch {
-            setError('登入時發生錯誤');
+        } catch (err: any) {
+            console.error('Firebase Auth Error:', err);
+            if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+                setError('帳號或密碼不正確');
+            } else {
+                setError('登入時發生錯誤: ' + err.message);
+            }
             setLoading(false);
         }
     };

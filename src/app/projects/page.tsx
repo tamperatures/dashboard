@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/components/layout/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -72,11 +72,10 @@ const fadeUp = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transi
 
 export default function ProjectsPage() {
     const router = useRouter();
-    const { data: session } = useSession();
-    const userRole = (session?.user as any)?.role;
-    const userName = session?.user?.name;
-    const rawDepts = (session?.user as any)?.departments || [];
-    const userDepts = rawDepts.length > 0 ? rawDepts : ((session?.user as any)?.department ? [(session?.user as any)?.department] : []);
+    const { user, userData } = useAuth();
+    const userRole = userData?.role || 'staff';
+    const userName = userData?.name || user?.displayName;
+    const userDepts = userData?.departments || (userData?.department ? [userData.department] : []);
 
     const [projects, setProjects] = useState<Project[]>([]);
     const toast = useToast();

@@ -3,7 +3,9 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { signOut, useSession } from 'next-auth/react';
+import { useAuth } from '@/components/layout/AuthProvider';
+import { auth } from '@/lib/firebase';
+import { signOut } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, Users, FolderKanban, CalendarDays,
@@ -26,10 +28,9 @@ type NavItem = { href: string; label: string; icon: React.ElementType; adminOnly
 export function Sidebar() {
     const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
-    const { data: session } = useSession();
-
-    const userRole = (session?.user as any)?.role || 'staff';
-    const userName = session?.user?.name || '用戶';
+    const { user, userData } = useAuth();
+    const userRole = userData?.role || 'staff';
+    const userName = userData?.name || user?.displayName || user?.email?.split('@')[0] || '用戶';
 
     const toggleSidebar = () => setIsOpen(!isOpen);
 
@@ -93,7 +94,7 @@ export function Sidebar() {
                         </div>
                     </div>
                     <button
-                        onClick={() => signOut({ callbackUrl: '/login' })}
+                        onClick={() => signOut(auth).then(() => window.location.href = '/login')}
                         className="p-2 rounded-xl text-[#86868B] hover:text-red-500 hover:bg-red-50 transition-all shrink-0"
                         title="登出"
                     >

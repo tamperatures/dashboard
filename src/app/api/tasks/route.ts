@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db as firestore } from '@/lib/firebase-admin';
 import type { Task } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
-import { auth } from '@/lib/auth';
+import { auth } from '@/lib/firebase-admin';
 
 export async function GET(request: Request) {
     const session = await auth();

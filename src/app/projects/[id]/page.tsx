@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/components/layout/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -133,9 +133,9 @@ const STAGE_HINTS: Record<string, string> = {
 
 export default function ProjectDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
-    const { data: session } = useSession();
-    const userRole = (session?.user as any)?.role;
-    const userDepts = (session?.user as any)?.departments || [];
+    const { user, userData } = useAuth();
+    const userRole: string = userData?.role || 'staff';
+    const userDepts: string[] = userData?.departments || (userData?.department ? [userData.department] : []);
 
     const [projectId, setProjectId] = useState<string | null>(null);
     const [project, setProject] = useState<any>(null);

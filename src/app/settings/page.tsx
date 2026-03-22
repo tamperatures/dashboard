@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/components/layout/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,11 +13,11 @@ const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { st
 const fadeUp = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 260, damping: 20 } } };
 
 export default function SettingsPage() {
-    const { data: session } = useSession();
-    const userRole = (session?.user as any)?.role || 'staff';
-    const userDept = (session?.user as any)?.department || '—';
-    const userName = session?.user?.name || '—';
-    const userEmail = session?.user?.email || '—';
+    const { user, userData } = useAuth();
+    const userRole = userData?.role || 'staff';
+    const userDept = userData?.department || '—';
+    const userName = userData?.name || user?.displayName || user?.email || '—';
+    const userEmail = user?.email || '—';
 
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
