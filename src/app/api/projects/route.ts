@@ -3,6 +3,7 @@ import { generateProjectCode } from '@/lib/db';
 import { db as firestore } from '@/lib/firebase-admin';
 import { auth } from '@/lib/auth';
 import { v4 as uuidv4 } from 'uuid';
+export const dynamic = 'force-dynamic';
 
 // GET /api/projects — list projects (all users see all projects)
 export async function GET() {
@@ -50,8 +51,8 @@ export async function POST(request: NextRequest) {
         stage: 'S01_客戶查詢' as const,
         status: status || 'In Progress', // default status
         progress: 0,
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0],
+        startDate: '',
+        endDate: '',
         assignedTo: assignedTo || [],
         pmResponsible: pmResponsible || '',
         description: description || '',

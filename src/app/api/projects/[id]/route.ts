@@ -113,6 +113,54 @@ export async function PUT(
     const userRole = (session.user as any).role;
     const userDepts: string[] = (session.user as any).departments || ((session.user as any).department ? [(session.user as any).department] : []);
 
+    // Handle Stage Progression Requests (Staff)
+    if (body.requestStage) {
+        if (userRole !== 'staff') {
+            return NextResponse.json({ error: '只有員工可以提交推進請求' }, { status: 403 });
+        }
+        project.pendingStageRequest = {
+            requestedStage: body.requestStage,
+            requestedBy: (session.user as any).name || 'Unknown',
+            createdAt: new Date().toISOString(),
+        };
+        project.updatedAt = new Date().toISOString();
+        await projectRef.set(project);
+        return NextResponse.json({ project });
+    }
+
+    // Handle Admin Resolving Stage Requests (Admin)
+    if (body.resolveStageRequest) {
+        if (userRole !== 'admin') {
+            return NextResponse.json({ error: '只有管理員可以審核請求' }, { status: 403 });
+        }
+        if (body.resolveStageRequest === 'approve' && project.pendingStageRequest) {
+            project.stage = project.pendingStageRequest.requestedStage;
+            if (!project.stageLogs) project.stageLogs = [];
+            project.stageLogs.push({
+                id: uuidv4(),
+                stage: project.stage,
+                userId: (session.user as any).id,
+                userName: (session.user as any).name || 'Admin',
+                description: `批准了推進至 ${project.stage.replace('_', ' ')} 的請求`,
+                timestamp: new Date().toISOString(),
+            });
+        } else if (body.resolveStageRequest === 'deny' && project.pendingStageRequest) {
+            if (!project.stageLogs) project.stageLogs = [];
+            project.stageLogs.push({
+                id: uuidv4(),
+                stage: project.stage || 'S01_客戶查詢',
+                userId: (session.user as any).id,
+                userName: (session.user as any).name || 'Admin',
+                description: `拒絕了推進至 ${project.pendingStageRequest.requestedStage.replace('_', ' ')} 的請求`,
+                timestamp: new Date().toISOString(),
+            });
+        }
+        delete project.pendingStageRequest;
+        project.updatedAt = new Date().toISOString();
+        await projectRef.set(project);
+        return NextResponse.json({ project });
+    }
+
     // Determine allowed fields based on role/departments
     let allowedFields: string[];
     if (userRole === 'admin') {

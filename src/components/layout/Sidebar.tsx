@@ -106,9 +106,9 @@ export function Sidebar() {
 
     return (
         <>
-            <div className="md:hidden fixed top-0 left-0 z-50 p-3">
-                <button onClick={toggleSidebar} className="p-2.5 bg-white/90 backdrop-blur-xl border border-[#D1D1D6]/50 shadow-lg shadow-black/5 rounded-2xl text-[#1D1D1F] hover:bg-white transition-all active:scale-95">
-                    <Menu size={18} />
+            <div className="md:hidden fixed top-0 left-0 z-50 p-2 sm:p-3 flex items-center h-[56px]">
+                <button onClick={toggleSidebar} className="p-1.5 sm:p-2.5 bg-white/90 backdrop-blur-xl border border-[#D1D1D6]/50 shadow-sm sm:shadow-lg rounded-xl sm:rounded-2xl text-[#1D1D1F] hover:bg-white transition-all active:scale-95">
+                    <Menu className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" />
                 </button>
             </div>
 

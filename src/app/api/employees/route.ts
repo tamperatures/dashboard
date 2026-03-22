@@ -3,6 +3,8 @@ import { db as firestore } from '@/lib/firebase-admin';
 import { auth } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 // GET /api/employees — list all users (Admin and Staff can view)
 export async function GET() {
@@ -17,7 +19,11 @@ export async function GET() {
         const { password, ...rest } = data;
         return rest;
     });
-    return NextResponse.json({ users });
+    return NextResponse.json({ users }, {
+        headers: {
+            'Cache-Control': 'no-store, max-age=0'
+        }
+    });
 }
 
 // POST /api/employees — create new user

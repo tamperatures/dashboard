@@ -61,6 +61,7 @@ export default function CalendarPage() {
     const [projects, setProjects] = useState<any[]>([]);
     const [employees, setEmployees] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const toast = useToast();
 
     // Modal state
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -182,6 +183,34 @@ export default function CalendarPage() {
                     createdAt: p.createdAt
                 });
             }
+
+            // Sync Construction Start Date
+            if (p.startDate) {
+                list.push({
+                    id: `start-${p.id}`,
+                    projectId: p.id,
+                    title: `[開工] ${p.clientName}`,
+                    type: 'milestone',
+                    date: p.startDate,
+                    status: 'pending',
+                    assigneeId: p.pmResponsible || undefined,
+                    createdAt: p.createdAt
+                });
+            }
+
+            // Sync Construction End Date
+            if (p.endDate) {
+                list.push({
+                    id: `end-${p.id}`,
+                    projectId: p.id,
+                    title: `[完工交場] ${p.clientName}`,
+                    type: 'milestone',
+                    date: p.endDate,
+                    status: 'pending',
+                    assigneeId: p.pmResponsible || undefined,
+                    createdAt: p.createdAt
+                });
+            }
         });
         return list;
     }, [tasks, projects]);
@@ -190,6 +219,15 @@ export default function CalendarPage() {
     const filteredEvents = useMemo(() => {
         if (deptFilter === 'all') return allEvents;
         return allEvents.filter(ev => {
+            // Force specific generated events to belong to specific departments
+            if (ev.type === 'meeting' || ev.title.includes('[約見]')) {
+                return deptFilter === 'frontend';
+            }
+            if (ev.title.includes('[開工]') || ev.title.includes('[完工交場]')) {
+                return deptFilter === 'engineering';
+            }
+
+            // Fallback to project-level stage filtering
             const project = projects.find(p => p.id === ev.projectId);
             if (!project) return true; // show orphaned events regardless
             const stage = project.stage || '';
@@ -464,70 +502,74 @@ export default function CalendarPage() {
 
             </div>
 
-            {/* Create Modal */}
             <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>新增排程或任務</DialogTitle>
+                <DialogContent className="sm:max-w-[480px] p-6 sm:p-8">
+                    <DialogHeader className="mb-2">
+                        <DialogTitle className="flex items-center gap-2 text-[#1D1D1F] tracking-tight font-bold text-[18px]">
+                            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                                <Plus className="w-5 h-5 text-[#0071E3]" />
+                            </div>
+                            新增排程或任務
+                        </DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-600">事項類型 <span className="text-red-500">*</span></label>
+                    <div className="space-y-5 py-2">
+                        <div className="space-y-2">
+                            <label className="text-[12px] font-bold text-[#424245] tracking-wide ml-1">事項類型 <span className="text-red-500">*</span></label>
                             <Select value={createForm.type} onValueChange={v => setCreateForm({ ...createForm, type: v, assigneeId: '' })}>
-                                <SelectTrigger>
+                                <SelectTrigger className="h-12 text-[14px] font-medium bg-[#F5F5F7] border-transparent hover:bg-[#E8E8ED] transition-colors rounded-xl px-4 shadow-none focus:ring-2 focus:ring-[#0071E3]/20">
                                     <SelectValue />
                                 </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="milestone">📌 專案里程碑 (如: 開工日)</SelectItem>
-                                    <SelectItem value="task">💼 員工任務 (如: 訂網)</SelectItem>
+                                <SelectContent className="rounded-xl border-[#E8E8ED] shadow-lg">
+                                    <SelectItem value="milestone" className="rounded-lg my-1">📌 專案里程碑 (如: 開工日)</SelectItem>
+                                    <SelectItem value="task" className="rounded-lg my-1">💼 員工任務 (如: 訂網)</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-600">標題 <span className="text-red-500">*</span></label>
-                            <Input placeholder="輸入事項名稱" value={createForm.title} onChange={e => setCreateForm({ ...createForm, title: e.target.value })} />
+                        <div className="space-y-2">
+                            <label className="text-[12px] font-bold text-[#424245] tracking-wide ml-1">標題 <span className="text-red-500">*</span></label>
+                            <Input placeholder="輸入事項名稱" value={createForm.title} onChange={e => setCreateForm({ ...createForm, title: e.target.value })} className="h-12 text-[14px] font-medium bg-[#F5F5F7] border-transparent hover:bg-[#E8E8ED] transition-colors rounded-xl px-4 shadow-none focus-visible:ring-2 focus-visible:ring-[#0071E3]/20" />
                         </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-600">關聯項目 <span className="text-red-500">*</span></label>
+                        <div className="space-y-2">
+                            <label className="text-[12px] font-bold text-[#424245] tracking-wide ml-1">關聯項目 <span className="text-red-500">*</span></label>
                             <Select value={createForm.projectId} onValueChange={v => setCreateForm({ ...createForm, projectId: v })}>
-                                <SelectTrigger>
+                                <SelectTrigger className="h-12 text-[14px] font-medium bg-[#F5F5F7] border-transparent hover:bg-[#E8E8ED] transition-colors rounded-xl px-4 shadow-none focus:ring-2 focus:ring-[#0071E3]/20">
                                     <SelectValue placeholder="選擇關聯的專案..." />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="rounded-xl border-[#E8E8ED] shadow-lg">
                                     {projects.map(p => (
-                                        <SelectItem key={p.id} value={p.id}>{p.projectCode} - {p.clientName}</SelectItem>
+                                        <SelectItem key={p.id} value={p.id} className="rounded-lg my-0.5">{p.projectCode} - {p.clientName}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-600">日期 <span className="text-red-500">*</span></label>
-                            <Input type="date" value={createForm.date} onChange={e => setCreateForm({ ...createForm, date: e.target.value })} />
+                        <div className="space-y-2">
+                            <label className="text-[12px] font-bold text-[#424245] tracking-wide ml-1">日期 <span className="text-red-500">*</span></label>
+                            <Input type="date" value={createForm.date} onChange={e => setCreateForm({ ...createForm, date: e.target.value })} className="h-12 text-[14px] font-medium bg-[#F5F5F7] border-transparent hover:bg-[#E8E8ED] transition-colors rounded-xl px-4 shadow-none focus-visible:ring-2 focus-visible:ring-[#0071E3]/20" />
                         </div>
 
                         {createForm.type === 'task' && (
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-slate-600">指派給</label>
+                            <div className="space-y-2">
+                                <label className="text-[12px] font-bold text-[#424245] tracking-wide ml-1">指派給</label>
                                 <Select value={createForm.assigneeId} onValueChange={v => setCreateForm({ ...createForm, assigneeId: v })}>
-                                    <SelectTrigger>
+                                    <SelectTrigger className="h-12 text-[14px] font-medium bg-[#F5F5F7] border-transparent hover:bg-[#E8E8ED] transition-colors rounded-xl px-4 shadow-none focus:ring-2 focus:ring-[#0071E3]/20">
                                         <SelectValue placeholder="選擇指派員工 (可選)..." />
                                     </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="unassigned">未指派</SelectItem>
+                                    <SelectContent className="rounded-xl border-[#E8E8ED] shadow-lg">
+                                        <SelectItem value="unassigned" className="rounded-lg my-0.5">未指派</SelectItem>
                                         {employees.map(emp => (
-                                            <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                                            <SelectItem key={emp.id} value={emp.id} className="rounded-lg my-0.5">{emp.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
                         )}
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>取消</Button>
-                        <Button onClick={handleCreateTask} disabled={saving} className="bg-slate-900 text-white">
+                    <DialogFooter className="pt-4 border-t border-[#E8E8ED]/60 mt-2">
+                        <Button variant="outline" onClick={() => setIsCreateModalOpen(false)} className="rounded-xl h-11 px-6 font-bold text-[#424245] border-transparent hover:bg-[#F5F5F7]">取消</Button>
+                        <Button onClick={handleCreateTask} disabled={saving} className="bg-[#0071E3] hover:bg-[#0077ED] text-white rounded-xl h-11 px-8 font-bold border-none transition-all shadow-[0_2px_10px_rgba(0,113,227,0.2)] hover:shadow-[0_4px_16px_rgba(0,113,227,0.4)]">
                             {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                             儲存事項
                         </Button>

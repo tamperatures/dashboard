@@ -34,6 +34,15 @@ export const authConfig: NextAuthConfig = {
                 if (typeof session.mustChangePassword === 'boolean') {
                     token.mustChangePassword = session.mustChangePassword;
                 }
+                if (session.role) {
+                    token.role = session.role;
+                }
+                if (session.departments) {
+                    token.departments = session.departments;
+                }
+                if (session.department) {
+                    token.department = session.department;
+                }
             }
             return token;
         },

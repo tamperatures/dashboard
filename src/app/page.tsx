@@ -93,16 +93,15 @@ export default function Dashboard() {
   const stageData = Object.entries(projects.reduce<Record<string, number>>((acc, p) => { acc[p.stage] = (acc[p.stage] || 0) + 1; return acc; }, {})).map(([name, value]) => ({ name: STAGE_LABELS[name] || name, value, color: STAGE_COLORS[name] || '#86868B' }));
   const hasData = projects.length > 0;
 
-  /* KPI card */
   const KpiCard = ({ label, value, icon: Icon, gradient }: { label: string; value: string | number; icon: React.ElementType; gradient: string }) => (
     <Card className="hover:shadow-md transition-shadow">
-      <CardContent className="p-5 flex flex-row items-center gap-4">
-        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${gradient}`}>
-          <Icon className="h-5 w-5 text-white" />
+      <CardContent className="p-3.5 sm:p-5 flex flex-row items-center gap-3 sm:gap-4">
+        <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 ${gradient}`}>
+          <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
         </div>
-        <div>
-          <p className="text-[11px] font-medium text-[#86868B] uppercase tracking-wider">{label}</p>
-          <p className="text-2xl font-bold text-[#1D1D1F] tracking-tight mt-0.5">{value}</p>
+        <div className="min-w-0">
+          <p className="text-[10px] sm:text-[11px] font-medium text-[#86868B] uppercase tracking-wider truncate">{label}</p>
+          <p className="text-lg sm:text-2xl font-bold text-[#1D1D1F] tracking-tight mt-0.5 truncate">{value}</p>
         </div>
       </CardContent>
     </Card>

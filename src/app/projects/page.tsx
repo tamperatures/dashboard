@@ -13,7 +13,7 @@ import {
     Hammer, Droplets, Paintbrush, Zap, Sofa, Wrench,
     MapPin, User, Clock, ChevronRight, Plus, AlertCircle, Loader2,
     Home, DollarSign, Users, Tag, CalendarDays, FileText, X,
-    UploadCloud, Trash2, Paperclip
+    UploadCloud, Trash2, Paperclip, Briefcase
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/ui/toast';
@@ -36,6 +36,7 @@ interface Project {
     area?: string;
     meetingDateTime?: string;
     status?: string;
+    pendingStageRequest?: any;
 }
 
 const STAGES = [
@@ -73,7 +74,9 @@ export default function ProjectsPage() {
     const router = useRouter();
     const { data: session } = useSession();
     const userRole = (session?.user as any)?.role;
-    const userDept = (session?.user as any)?.department;
+    const userName = session?.user?.name;
+    const rawDepts = (session?.user as any)?.departments || [];
+    const userDepts = rawDepts.length > 0 ? rawDepts : ((session?.user as any)?.department ? [(session?.user as any)?.department] : []);
 
     const [projects, setProjects] = useState<Project[]>([]);
     const toast = useToast();
@@ -100,6 +103,11 @@ export default function ProjectsPage() {
     const modalFileRef = useRef<HTMLInputElement>(null);
     const [modalFiles, setModalFiles] = useState<{ name: string; url: string; type: string }[]>([]);
     const [uploadingModal, setUploadingModal] = useState(false);
+
+    // Delete Modal State
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [projectToDelete, setProjectToDelete] = useState<{ id: string, name: string } | null>(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
 
 
 
@@ -137,7 +145,7 @@ export default function ProjectsPage() {
 
     const fetchProjects = async () => {
         try {
-            const res = await fetch('/api/projects');
+            const res = await fetch('/api/projects?t=' + Date.now(), { cache: 'no-store' });
             if (res.ok) {
                 const data = await res.json();
                 setProjects(data.projects || []);
@@ -212,29 +220,35 @@ export default function ProjectsPage() {
         }
     };
 
-    const handleDeleteProject = async (id: string, name: string) => {
-        if (!confirm(`確定要刪除項目「${name}」嗎？此操作無法還原。`)) return;
+    const handleDeleteProjectClick = (e: React.MouseEvent, id: string, name: string) => {
+        e.stopPropagation();
+        setProjectToDelete({ id, name });
+        setDeleteModalOpen(true);
+    };
+
+    const confirmDeleteProject = async () => {
+        if (!projectToDelete) return;
+        setDeleteLoading(true);
         try {
-            const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+            const res = await fetch(`/api/projects/${projectToDelete.id}`, { method: 'DELETE' });
             if (!res.ok) throw new Error('Failed');
             fetchProjects();
+            setDeleteModalOpen(false);
+            setProjectToDelete(null);
+            toast.success('項目已成功刪除');
         } catch {
             toast.error('刪除失敗，請稍後再試');
+        } finally {
+            setDeleteLoading(false);
         }
     };
 
-    const viewableProjects = projects.filter(p => {
-        if (userRole === 'admin') return true;
-        const requiredDept = STAGE_DEPARTMENTS[p.stage];
-        return !requiredDept || requiredDept === userDept;
-    });
+    // Staff can see all projects now. Permissions will be restricted at the detail/edit level.
+    const viewableProjects = projects;
 
     const filtered = selectedStage ? viewableProjects.filter(p => p.stage === selectedStage) : viewableProjects;
 
-    const availableStages = STAGES.filter(s => {
-        if (userRole === 'admin') return true;
-        return STAGE_DEPARTMENTS[s] === userDept;
-    });
+    const availableStages = STAGES;
 
     const stageCounts = availableStages.map(s => ({
         name: s,
@@ -243,36 +257,51 @@ export default function ProjectsPage() {
     }));
 
     return (
-        <motion.div className="max-w-[1600px] mx-auto space-y-8 pb-12" initial="hidden" animate="show" variants={container}>
-            {/* Header */}
-            <motion.div variants={fadeUp} className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-                <div>
-                    <h2 className="text-2xl font-semibold tracking-tight text-slate-900">項目管理</h2>
-                    <p className="text-sm text-slate-500 mt-1">追蹤所有裝修工程進度及工種狀態</p>
+        <motion.div className="max-w-[1600px] mx-auto space-y-6 pb-12 px-4 sm:px-6 lg:px-8 mt-2" initial="hidden" animate="show" variants={container}>
+            {/* Header / Hero Section */}
+            <motion.div variants={fadeUp} className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-[#1c2331] via-[#2c3545] to-[#1c2331] text-white p-8 sm:p-10 shadow-lg mb-6">
+                <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-500/10 rounded-full blur-[80px] translate-y-1/3 -translate-x-1/4 pointer-events-none" />
+
+                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                    <div>
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-4">
+                            <Briefcase className="w-4 h-4 text-blue-300" />
+                            <span className="text-[11px] font-bold tracking-wider text-blue-100">項目總覽</span>
+                        </div>
+                        <h2 className="text-[28px] sm:text-[32px] font-extrabold tracking-tight mb-2">項目管理</h2>
+                        <p className="text-[13px] sm:text-[14px] font-medium text-slate-300 max-w-xl leading-relaxed">
+                            追蹤所有裝修工程進度、工程狀態及跟進項目，確保每項工程如期進行。
+                        </p>
+                    </div>
+                    {userRole === 'admin' && (
+                        <button
+                            onClick={() => setShowCreateModal(true)}
+                            className="shrink-0 h-11 px-6 rounded-2xl bg-white text-[#1c2331] font-bold text-[13px] hover:bg-slate-100 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-sm flex items-center gap-2 self-start sm:self-center"
+                        >
+                            <Plus className="w-4 h-4" />
+                            新增項目
+                        </button>
+                    )}
                 </div>
-                {userRole === 'admin' && (
-                    <Button onClick={() => setShowCreateModal(true)} className="h-9 gap-2 bg-slate-900 text-white hover:bg-slate-800 shadow-md text-sm">
-                        <Plus className="h-4 w-4" /> 新增項目
-                    </Button>
-                )}
             </motion.div>
 
             {/* Stage Filter Pills */}
-            <motion.div variants={fadeUp} className="flex flex-wrap gap-2">
+            <motion.div variants={fadeUp} className="flex w-full max-w-full overflow-x-auto flex-nowrap gap-2.5 pt-2 pb-2 scrollbar-hide sm:flex-wrap">
                 <button
                     onClick={() => setSelectedStage(null)}
-                    className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${!selectedStage ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                    className={`shrink-0 px-4 py-2 rounded-xl text-[13px] font-bold transition-all shadow-sm ${!selectedStage ? 'bg-[#1D1D1F] text-white' : 'bg-white text-[#86868B] border border-[#E8E8ED] hover:bg-[#F5F5F7] hover:text-[#1D1D1F]'}`}
                 >
-                    全部 <span className="ml-1 opacity-70">{viewableProjects.length}</span>
+                    全部 <span className={!selectedStage ? 'opacity-80 ml-1.5 font-normal' : 'text-[#86868B] ml-1.5 font-normal'}>{viewableProjects.length}</span>
                 </button>
                 {stageCounts.map(s => (
                     <button
                         key={s.name}
                         onClick={() => setSelectedStage(selectedStage === s.name ? null : s.name)}
-                        className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${selectedStage === s.name ? `${s.bg} ${s.text} ring-1 ring-current/20` : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                        className={`shrink-0 px-4 py-2 rounded-xl text-[13px] font-bold transition-all flex items-center gap-2 shadow-sm ${selectedStage === s.name ? `bg-white ring-2 ring-current ring-inset ${s.text}` : 'bg-white text-[#86868B] border border-[#E8E8ED] hover:bg-[#F5F5F7] hover:text-[#1D1D1F]'}`}
                     >
-                        <span className={`w-2 h-2 rounded-full ${s.dot}`} />
-                        {s.label} <span className="opacity-70">{s.count}</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                        {s.label} <span className="font-normal opacity-70">{s.count}</span>
                     </button>
                 ))}
             </motion.div>
@@ -290,95 +319,106 @@ export default function ProjectsPage() {
 
                             return (
                                 <motion.div key={project.id} layout initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.2 }}>
-                                    <Card className="overflow-hidden group">
-                                        <CardContent className="p-5">
-                                            {/* Top Row */}
-                                            <div className="flex items-center justify-between mb-3">
-                                                <span className="text-xs font-mono font-semibold text-slate-400">{project.projectCode}</span>
+                                    <div className="bg-white rounded-[24px] overflow-hidden border border-[#E8E8ED] shadow-[0_2px_20px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full">
+                                        <div className="p-6 flex-1 flex flex-col">
+                                            {/* Top Row: Code & Actions */}
+                                            <div className="flex items-start justify-between mb-5">
+                                                <div className="px-3 py-1 rounded-lg bg-[#F5F5F7] text-[11px] font-mono font-bold text-[#86868B] tracking-wider border border-[#E8E8ED]/70">
+                                                    {project.projectCode}
+                                                </div>
                                                 <div className="flex items-center gap-2">
-                                                    <Badge variant="outline" className={`text-[11px] font-semibold border-transparent ${stageStyle.bg} ${stageStyle.text}`}>
+                                                    {project.pendingStageRequest && (
+                                                        <div className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-600 flex items-center gap-1 shadow-sm border border-amber-100/50">
+                                                            <Clock className="w-3 h-3" /> 待審批
+                                                        </div>
+                                                    )}
+                                                    <div className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${stageStyle.bg} ${stageStyle.text}`}>
                                                         {stageStyle.label}
-                                                    </Badge>
+                                                    </div>
                                                     {userRole === 'admin' && (
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id, project.clientName); }}
-                                                            className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-all duration-150 shadow-sm hover:shadow"
+                                                            onClick={(e) => handleDeleteProjectClick(e, project.id, project.clientName)}
+                                                            className="p-1 rounded-lg text-[#86868B] hover:text-red-500 hover:bg-red-50 transition-colors"
                                                             title="刪除項目"
                                                         >
-                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                            <Trash2 className="w-4 h-4" />
                                                         </button>
                                                     )}
                                                 </div>
                                             </div>
 
-                                            {/* Client + Status + Address */}
-                                            <div className="flex items-center gap-2">
-                                                <h3 className="text-base font-bold text-slate-900 leading-tight">{project.clientName}</h3>
-                                                {project.status && project.status !== 'In Progress' && (
-                                                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md ${project.status === 'Signed' ? 'bg-emerald-50 text-emerald-600' :
-                                                        project.status === 'Lost' ? 'bg-slate-100 text-slate-500' : ''
-                                                        }`}>
-                                                        <span className={`w-1.5 h-1.5 rounded-full ${project.status === 'Signed' ? 'bg-emerald-500' : 'bg-slate-400'
-                                                            }`} />
-                                                        {project.status === 'Signed' ? '已簽單' : '未成交'}
-                                                    </span>
+                                            {/* Title & Location */}
+                                            <div className="mb-5">
+                                                <h3 className="text-[19px] font-bold text-[#1D1D1F] leading-snug mb-2 line-clamp-2">
+                                                    {project.clientName}
+                                                    {project.status && project.status !== 'In Progress' && (
+                                                        <span className={`ml-2 inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md align-middle ${project.status === 'Signed' ? 'bg-emerald-50 text-emerald-600' : 'bg-[#F5F5F7] text-[#86868B]'}`}>
+                                                            {project.status === 'Signed' ? '已簽單' : '未成交'}
+                                                        </span>
+                                                    )}
+                                                </h3>
+                                                <div className="flex items-center gap-1.5 text-[12px] font-medium text-[#86868B]">
+                                                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                                                    <span className="truncate">{project.estate} {project.address}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Meta tags */}
+                                            <div className="flex flex-wrap items-center gap-4 text-[12px] font-semibold text-[#86868B] mt-auto">
+                                                <div className="flex items-center gap-1.5">
+                                                    <User className="w-3.5 h-3.5 text-slate-300" />
+                                                    {project.pmResponsible || '未指派'}
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <Wrench className="w-3.5 h-3.5 text-slate-300" />
+                                                    {project.renovationType}
+                                                </div>
+                                            </div>
+
+                                            {/* Bottom Info Section (Grey box) */}
+                                            <div className="mt-6 p-4 bg-[#F5F5F7] rounded-[16px] space-y-2.5">
+                                                {['S01_客戶查詢', 'S02_見客前準備', 'S03_初步報價'].includes(project.stage) ? (
+                                                    <>
+                                                        <div className="flex justify-between items-center text-[12px]">
+                                                            <span className="text-[#86868B] font-semibold">預計面積</span>
+                                                            <span className="text-[#1D1D1F] font-bold">{project.area || '未提供'}</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-[12px]">
+                                                            <span className="text-[#86868B] font-semibold">約見時間</span>
+                                                            <span className="text-[#1D1D1F] font-bold">{project.meetingDateTime ? new Date(project.meetingDateTime).toLocaleString('zh-HK', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '未定'}</span>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex justify-between items-center text-[12px]">
+                                                            <span className="text-[#86868B] font-semibold leading-none">工程預算</span>
+                                                            <span className="text-[#1D1D1F] font-bold leading-none block pt-0.5">HK${(project.budget / 1000).toFixed(0)}k</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-[12px] pt-1.5">
+                                                            <span className="text-[#86868B] font-semibold leading-none">總進度</span>
+                                                            <span className="text-[#1D1D1F] font-bold leading-none">{project.progress}%</span>
+                                                        </div>
+                                                        <div className="h-2 bg-[#E8E8ED] rounded-full overflow-hidden mt-1.5 border border-black/[0.02]">
+                                                            <motion.div
+                                                                className={`h-full rounded-full ${project.progress >= 90 ? 'bg-emerald-500' : project.progress >= 50 ? 'bg-[#0071E3]' : project.progress >= 25 ? 'bg-amber-400' : 'bg-[#86868B]'}`}
+                                                                initial={{ width: 0 }}
+                                                                animate={{ width: `${project.progress}%` }}
+                                                                transition={{ duration: 0.8, delay: 0.2 }}
+                                                            />
+                                                        </div>
+                                                    </>
                                                 )}
                                             </div>
-                                            <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500">
-                                                <MapPin className="h-3 w-3 shrink-0" />
-                                                <span className="truncate">{project.estate} {project.address}</span>
-                                            </div>
+                                        </div>
 
-                                            {/* Meta Row */}
-                                            <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
-                                                <span className="flex items-center gap-1.5">
-                                                    <User className="h-3 w-3" /> {project.pmResponsible || '未指派負責人'}
-                                                </span>
-                                                <span className="flex items-center gap-1.5">
-                                                    <Wrench className="h-3 w-3" /> {project.renovationType}
-                                                </span>
-                                            </div>
-
-                                            {/* Info block based on stage */}
-                                            {['S01_客戶查詢', 'S02_見客前準備', 'S03_初步報價'].includes(project.stage) ? (
-                                                <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-100/50">
-                                                    <div className="flex items-center justify-between mb-1.5">
-                                                        <span className="text-xs font-medium text-slate-500">預計面積</span>
-                                                        <span className="text-xs font-semibold text-slate-700">{project.area || '未提供'}</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-medium text-slate-500">約見時間</span>
-                                                        <span className="text-xs font-semibold text-slate-700">{project.meetingDateTime ? new Date(project.meetingDateTime).toLocaleString('zh-HK', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '未定'}</span>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    {/* Budget + Progress */}
-                                                    <div className="mt-4 flex items-center justify-between">
-                                                        <span className="text-sm font-bold text-slate-900">HK${(project.budget / 1000).toFixed(0)}k</span>
-                                                        <span className="text-xs font-semibold text-slate-500">{project.progress}%</span>
-                                                    </div>
-                                                    <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                        <motion.div
-                                                            className={`h-full rounded-full ${project.progress >= 90 ? 'bg-emerald-500' : project.progress >= 50 ? 'bg-blue-500' : project.progress >= 25 ? 'bg-amber-400' : 'bg-slate-300'}`}
-                                                            initial={{ width: 0 }}
-                                                            animate={{ width: `${project.progress}%` }}
-                                                            transition={{ duration: 0.8, delay: 0.2 + idx * 0.05 }}
-                                                        />
-                                                    </div>
-                                                </>
-                                            )}
-
-                                            {/* Go to Details */}
-                                            <Button
-                                                variant="outline"
-                                                onClick={() => router.push(`/projects/${project.id}`)}
-                                                className="w-full h-8 mt-5 text-xs font-semibold bg-slate-50 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center gap-1"
-                                            >
-                                                查看詳情 <ChevronRight className="h-3 w-3" />
-                                            </Button>
-                                        </CardContent>
-                                    </Card>
+                                        {/* Action Button */}
+                                        <button
+                                            onClick={() => router.push(`/projects/${project.id}`)}
+                                            className="w-[calc(100%-48px)] mx-auto mb-6 h-10 rounded-xl font-bold text-[13px] text-[#424245] bg-[#F5F5F7] hover:bg-[#E8E8ED] hover:text-[#1D1D1F] flex items-center justify-center gap-1 transition-colors"
+                                        >
+                                            查看詳情 <ChevronRight className="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </motion.div>
                             );
                         })}
@@ -503,7 +543,7 @@ export default function ProjectsPage() {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-600">預計開工 <span className="text-red-500">*</span></label>
+                                    <label className="text-xs font-semibold text-slate-600">預計開工</label>
                                     <Input type="date" value={formStartDate} onChange={e => setFormStartDate(e.target.value)} className="h-10 bg-white" />
                                 </div>
                                 <div className="space-y-1.5">
@@ -558,6 +598,47 @@ export default function ProjectsPage() {
                             </Button>
                         </div>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Modal */}
+            <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+                <DialogContent className="max-w-md p-6 rounded-3xl border border-[#E8E8ED] shadow-xl">
+                    <DialogHeader className="mb-2">
+                        <DialogTitle className="text-[20px] font-bold text-[#1D1D1F] flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                <AlertCircle className="w-5 h-5 text-red-600" />
+                            </div>
+                            確定刪除項目？
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="py-2 mb-2">
+                        <p className="text-[14px] leading-relaxed text-[#424245]">
+                            即將永久刪除項目 <span className="font-bold text-[#1D1D1F] bg-[#F5F5F7] px-1.5 py-0.5 rounded-md">「{projectToDelete?.name}」</span>。
+                            <br className="mb-2" />
+                            <span className="text-[#86868B]">此操作無法還原，所有相關的圖紙、時間表及會議記錄將一併移除。</span>
+                        </p>
+                    </div>
+                    <div className="flex justify-end gap-3 mt-4">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-11 px-6 rounded-2xl text-[13px] font-bold text-[#424245] border-[#E8E8ED] bg-white hover:bg-[#F5F5F7] hover:text-[#1D1D1F] transition-colors"
+                            onClick={() => { setDeleteModalOpen(false); setProjectToDelete(null); }}
+                            disabled={deleteLoading}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            className="h-11 px-6 rounded-2xl bg-red-500 text-white text-[13px] font-bold hover:bg-red-600 border-none transition-colors shadow-sm"
+                            onClick={confirmDeleteProject}
+                            disabled={deleteLoading}
+                        >
+                            {deleteLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                            確認刪除
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </motion.div>

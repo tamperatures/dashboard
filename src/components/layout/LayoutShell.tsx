@@ -13,11 +13,11 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <div className="flex">
+        <div className="flex w-full min-h-screen overflow-hidden">
             <Sidebar />
-            <div className="flex-1 flex flex-col min-h-screen">
+            <div className="flex-1 flex flex-col min-w-0">
                 <Header />
-                <main className="p-4 sm:p-6 md:p-8 flex-1 overflow-x-hidden">
+                <main className="p-4 sm:p-6 md:p-8 flex-1 overflow-x-hidden min-w-0">
                     {children}
                 </main>
             </div>
