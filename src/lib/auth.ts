@@ -15,31 +15,51 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 password: { label: 'Password', type: 'password' },
             },
             async authorize(credentials) {
-                if (!credentials?.email || !credentials?.password) return null;
+                console.log('--- STARTING AUTHORIZE LOGIC ---');
+                if (!credentials?.email || !credentials?.password) {
+                    console.error('Missing credentials email or password');
+                    return null;
+                }
 
-                const usersRef = firestore.collection('users');
-                const snapshot = await usersRef.where('email', '==', credentials.email).where('status', '==', 'active').get();
+                try {
+                    console.log('Firebase project ID:', process.env.FIREBASE_PROJECT_ID);
+                    console.log('Querying Firestore for user:', credentials.email);
+                    const usersRef = firestore.collection('users');
+                    const snapshot = await usersRef.where('email', '==', credentials.email).where('status', '==', 'active').get();
 
-                if (snapshot.empty) return null;
+                    if (snapshot.empty) {
+                        console.error('No active user found with email:', credentials.email);
+                        return null;
+                    }
 
-                const user = snapshot.docs[0].data() as User;
+                    const user = snapshot.docs[0].data() as User;
+                    console.log('User found in Firestore:', user.email);
 
-                const isValid = await bcrypt.compare(
-                    credentials.password as string,
-                    user.password
-                );
+                    const isValid = await bcrypt.compare(
+                        credentials.password as string,
+                        user.password
+                    );
 
-                if (!isValid) return null;
+                    if (!isValid) {
+                        console.error('Invalid password for user:', credentials.email);
+                        return null;
+                    }
+                    
+                    console.log('Password is valid. Returning user object.');
 
-                return {
-                    id: user.id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                    mustChangePassword: user.mustChangePassword,
-                    department: user.department,
-                    departments: (user as any).departments || (user.department ? [user.department] : []),
-                };
+                    return {
+                        id: user.id,
+                        name: user.name,
+                        email: user.email,
+                        role: user.role,
+                        mustChangePassword: user.mustChangePassword,
+                        department: user.department,
+                        departments: (user as any).departments || (user.department ? [user.department] : []),
+                    };
+                } catch (error) {
+                    console.error('CRITICAL ERROR inside authorize():', error);
+                    return null;
+                }
             },
         }),
     ],
