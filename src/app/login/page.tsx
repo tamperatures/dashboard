@@ -96,8 +96,8 @@ export default function LoginPage() {
                         <div className="space-y-2">
                             <label className="text-xs font-semibold text-[#86868B] uppercase tracking-wider pl-1">電郵地址</label>
                             <div className={`relative flex items-center rounded-2xl transition-all duration-300 ring-1 ${focusedField === 'email'
-                                    ? 'ring-[#0071E3] bg-white shadow-lg shadow-[#0071E3]/8'
-                                    : 'ring-[#D1D1D6] bg-[#F9F9FB] hover:ring-[#86868B]'
+                                ? 'ring-[#0071E3] bg-white shadow-lg shadow-[#0071E3]/8'
+                                : 'ring-[#D1D1D6] bg-[#F9F9FB] hover:ring-[#86868B]'
                                 }`}>
                                 <Mail className={`absolute left-4 h-[18px] w-[18px] transition-colors duration-300 ${focusedField === 'email' ? 'text-[#0071E3]' : 'text-[#86868B]'
                                     }`} />
@@ -118,8 +118,8 @@ export default function LoginPage() {
                         <div className="space-y-2">
                             <label className="text-xs font-semibold text-[#86868B] uppercase tracking-wider pl-1">密碼</label>
                             <div className={`relative flex items-center rounded-2xl transition-all duration-300 ring-1 ${focusedField === 'password'
-                                    ? 'ring-[#0071E3] bg-white shadow-lg shadow-[#0071E3]/8'
-                                    : 'ring-[#D1D1D6] bg-[#F9F9FB] hover:ring-[#86868B]'
+                                ? 'ring-[#0071E3] bg-white shadow-lg shadow-[#0071E3]/8'
+                                : 'ring-[#D1D1D6] bg-[#F9F9FB] hover:ring-[#86868B]'
                                 }`}>
                                 <Lock className={`absolute left-4 h-[18px] w-[18px] transition-colors duration-300 ${focusedField === 'password' ? 'text-[#0071E3]' : 'text-[#86868B]'
                                     }`} />
@@ -162,32 +162,7 @@ export default function LoginPage() {
                             </button>
                         </motion.div>
 
-                        {/* Divider */}
-                        <div className="flex items-center gap-3 py-1">
-                            <div className="flex-1 h-px bg-[#E8E8ED]" />
-                            <span className="text-[10px] font-semibold text-[#C7C7CC] uppercase tracking-widest">測試帳號</span>
-                            <div className="flex-1 h-px bg-[#E8E8ED]" />
-                        </div>
 
-                        {/* Test Accounts */}
-                        <div className="grid grid-cols-2 gap-2.5">
-                            <button
-                                type="button"
-                                onClick={() => { setEmail('admin@tpt.com'); setPassword('admin123'); }}
-                                className="flex flex-col items-center gap-1 p-3 rounded-2xl bg-[#F9F9FB] ring-1 ring-[#E8E8ED] hover:ring-[#0071E3]/30 hover:bg-[#F0F4FF] transition-all duration-200 group"
-                            >
-                                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Admin</span>
-                                <span className="text-[11px] text-[#86868B] group-hover:text-[#1D1D1F] transition-colors">admin@tpt.com</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setEmail('angel@tpt.com'); setPassword('staff123'); }}
-                                className="flex flex-col items-center gap-1 p-3 rounded-2xl bg-[#F9F9FB] ring-1 ring-[#E8E8ED] hover:ring-[#0071E3]/30 hover:bg-[#F0F4FF] transition-all duration-200 group"
-                            >
-                                <span className="text-[10px] font-bold text-[#0071E3] uppercase tracking-wider">Staff</span>
-                                <span className="text-[11px] text-[#86868B] group-hover:text-[#1D1D1F] transition-colors">angel@tpt.com</span>
-                            </button>
-                        </div>
                     </form>
                 </motion.div>
 
