@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/layout/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,11 +14,12 @@ import {
     MapPin, User, Clock, ChevronLeft, ChevronDown, Calendar as CalIcon,
     Wallet, HardHat, FileText, UploadCloud, File, Image as ImageIcon,
     Download, Trash2, CheckCircle2, Circle, Loader2, Link as LinkIcon,
-    Save, Plus, Users, X, AlertCircle
+    Save, Plus, Users, X, AlertCircle, Paperclip, Inbox
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/toast';
+import { addWorkingDays, formatGanttDate } from '@/lib/dateUtils';
 
 const ALL_PHASES = [
     { key: 'S01_客戶查詢', label: 'S01 客戶查詢', dept: '推廣部' },
@@ -31,16 +32,16 @@ const ALL_PHASES = [
     { key: 'S08_工程完成', label: 'S08 工程完成', dept: '工程部' }
 ];
 
-// Stage → visible widget mapping
+// Stage → visible widget mapping (Cumulative to carry data forward)
 const STAGE_WIDGETS: Record<string, string[]> = {
     'S01_客戶查詢': ['overview', 'meetings', 'notes'],
-    'S02_見客前準備': ['design_links', 'meetings', 'notes'],
-    'S03_初步報價': ['status', 'meetings', 'notes'],
-    'S04_見客後跟進': ['design_links', 'meetings', 'notes'],
-    'S05_後續會面': ['status', 'meetings', 'notes'],
-    'S06_工程啟動': ['status', 'construction_team', 'construction_progress', 'notes'],
-    'S07_工程進行中': ['status', 'construction_team', 'construction_progress', 'notes'],
-    'S08_工程完成': ['status', 'construction_team', 'construction_progress', 'notes'],
+    'S02_見客前準備': ['overview', 'design_links', 'meetings', 'notes'],
+    'S03_初步報價': ['overview', 'design_links', 'status', 'meetings', 'notes'],
+    'S04_見客後跟進': ['overview', 'design_links', 'status', 'meetings', 'notes'],
+    'S05_後續會面': ['overview', 'design_links', 'status', 'meetings', 'notes'],
+    'S06_工程啟動': ['overview', 'design_links', 'status', 'construction_team', 'construction_progress', 'meetings', 'notes'],
+    'S07_工程進行中': ['overview', 'design_links', 'status', 'construction_team', 'construction_progress', 'meetings', 'notes'],
+    'S08_工程完成': ['overview', 'design_links', 'status', 'construction_team', 'construction_progress', 'meetings', 'notes'],
 };
 
 // 工程進度 — 10 construction phases with sub-tasks
@@ -133,6 +134,9 @@ const STAGE_HINTS: Record<string, string> = {
 
 export default function ProjectDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const openProgressParam = searchParams.get('openProgress');
+    
     const { user, userData } = useAuth();
     const userRole: string = userData?.role || 'staff';
     const userDepts: string[] = userData?.departments || (userData?.department ? [userData.department] : []);
@@ -266,6 +270,20 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                 setMeetings([]);
             }
             setNotes(data.project.notes || data.project.description || '');
+
+            // Auto-open progress modal if queried
+            if (openProgressParam === 'true') {
+                const currentData: any = {};
+                CONSTRUCTION_PHASES.forEach(phase => {
+                    currentData[phase.key] = data.project[phase.key] || {};
+                });
+                setTempProgressData(currentData);
+                setTempStartDate(data.project.startDate || '');
+                setTempEndDate(data.project.endDate || '');
+                setIsProgressModalOpen(true);
+                // Clear the parameter to avoid re-opening on manual closes
+                window.history.replaceState({}, '', `/projects/${projectId}`);
+            }
         } catch {
             toast.error('無法載入項目資料');
         } finally {
@@ -358,8 +376,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                 toast.error('員工無法回退或重選當前階段');
                 return;
             }
-            if (!isCurrentStageEditable) {
-                toast.error('您非當前階段負責部門，無法提交推進請求');
+            const targetDept = targetPhase?.dept || '';
+            if (!userDepts.includes(targetDept) && targetDept !== '—') {
+                toast.error(`無許可權！${targetPhase?.label} 必須由「${targetDept}」執行推進。`);
                 return;
             }
 
@@ -504,13 +523,19 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             const fileData = await r2Res.json();
 
             let fileType = 'other';
+            let finalName = fileData.fileName;
             if (file.type.startsWith('image/')) fileType = 'photo';
-            else if (file.type === 'application/pdf' ||
-                file.type === 'application/msword' ||
-                file.type.includes('officedocument')) {
-                if (file.name.includes('報價') || file.name.includes('Quotation')) fileType = 'quotation';
-                else if (file.name.includes('圖則') || file.name.includes('Drawing')) fileType = 'drawing';
+            else if (file.type === 'application/pdf' || file.type === 'application/msword' || file.type.includes('officedocument')) {
+                const lowerName = file.name.toLowerCase();
+                if (lowerName.includes('報價') || lowerName.includes('quotation') || lowerName.includes('quote')) fileType = 'quotation';
+                else if (lowerName.includes('圖則') || lowerName.includes('drawing') || lowerName.includes('plan')) fileType = 'drawing';
                 else fileType = 'contract';
+            }
+
+            if (fileType === 'quotation') {
+                const existingQuotes = project.files?.filter((f: any) => f.type === 'quotation') || [];
+                const vNum = existingQuotes.length + 1;
+                finalName = `[v${vNum}] ${finalName}`;
             }
 
             const res = await fetch(`/api/projects/${projectId}`, {
@@ -518,7 +543,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     newFile: {
-                        name: fileData.fileName,
+                        name: finalName,
                         url: fileData.url,
                         size: fileData.size,
                         type: fileType,
@@ -527,6 +552,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             });
 
             if (!res.ok) throw new Error('綁定至項目失敗');
+            toast.success(`✔️ 成功上傳：${finalName}`);
             fetchProject();
         } catch (err: any) {
             toast.error(err.message || '上傳失敗');
@@ -569,24 +595,23 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
         <>
             <motion.div className="max-w-[1240px] mx-auto pb-12" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
 
-                {/* Redesigned Header */}
-                <div className="bg-white border-b border-slate-200 sticky top-0 z-30 mb-6">
-                    <div className="px-6 sm:px-8 pt-5 pb-5">
+                {/* Shadcn UI Header */}
+                <div className="bg-white text-slate-900 border-b border-slate-200 rounded-t-[24px] mb-6">
+                    <div className="px-6 sm:px-8 pt-6 pb-6">
                         {/* Row 1: Back + Title + Badge */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <button onClick={() => router.push('/projects')} className="text-slate-400 hover:text-slate-900 transition-colors p-2 rounded-lg hover:bg-slate-100/80 -ml-2">
+                                <Button variant="ghost" size="icon" onClick={() => router.push('/projects')} className="text-slate-500 hover:text-slate-900 -ml-2">
                                     <ChevronLeft className="w-5 h-5" />
-                                </button>
+                                </Button>
                                 <div>
-                                    <div className="flex items-center gap-2.5">
-                                        <h1 className="text-lg font-bold text-slate-900 tracking-tight">{project.clientName}的{project.renovationType}</h1>
-                                        <Badge className="bg-slate-100 text-slate-500 px-2 py-0 border border-slate-200/60 text-[10px] font-mono font-semibold">
+                                    <div className="flex items-center gap-3">
+                                        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-none">{project.clientName}的{project.renovationType}</h1>
+                                        <Badge variant="outline" className="text-xs font-mono">
                                             {project.projectCode}
                                         </Badge>
                                         {project.status && project.status !== 'In Progress' && (
-                                            <Badge className={`px-2 py-0.5 text-[10px] font-bold border-0 ${project.status === 'Signed' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
-                                                }`}>
+                                            <Badge variant={project.status === 'Signed' ? 'default' : 'secondary'} className="text-xs">
                                                 {project.status === 'Signed' ? '✓ 已簽單' : '未成交'}
                                             </Badge>
                                         )}
@@ -597,43 +622,43 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                             {/* Circular Progress */}
                             <div className="flex items-center gap-4">
                                 <div className="text-right hidden sm:block">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">總進度</p>
-                                    <p className="text-sm font-bold text-slate-800">{ALL_PHASES[currentStageIdx]?.label.split(' ').slice(1).join(' ') || '—'}</p>
+                                    <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">總進度</p>
+                                    <p className="text-sm font-bold text-slate-900">{ALL_PHASES[currentStageIdx]?.label.split(' ').slice(1).join(' ') || '—'}</p>
                                 </div>
                                 <div className="relative w-12 h-12">
                                     <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
-                                        <circle cx="24" cy="24" r="20" fill="none" stroke="#f1f5f9" strokeWidth="4" />
-                                        <circle cx="24" cy="24" r="20" fill="none" stroke="#3b82f6" strokeWidth="4"
+                                        <circle cx="24" cy="24" r="20" fill="none" className="stroke-slate-100" strokeWidth="4" />
+                                        <circle cx="24" cy="24" r="20" fill="none" className="stroke-blue-600" strokeWidth="4"
                                             strokeDasharray={`${(project.progress / 100) * 125.6} 125.6`}
-                                            strokeLinecap="round" className="transition-all duration-700"
+                                            strokeLinecap="round" style={{ transition: 'stroke-dasharray 0.7s ease-in-out' }}
                                         />
                                     </svg>
-                                    <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-slate-700">{project.progress}%</span>
+                                    <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-slate-900">{project.progress}%</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Row 2: Info chips */}
-                        <div className="flex items-center gap-2 mt-3 ml-10 flex-wrap">
-                            <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
-                                <MapPin className="w-3 h-3 text-slate-400" /> {project.estate} {project.address}
+                        <div className="flex items-center gap-3 mt-4 ml-10 flex-wrap">
+                            <span className="inline-flex items-center gap-1.5 text-sm text-slate-600 bg-slate-100 px-3 py-1 rounded-md font-medium">
+                                <MapPin className="w-4 h-4 text-slate-400" /> {project.estate} {project.address}
                             </span>
                             {project.area && (
-                                <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
-                                    <HardHat className="w-3 h-3 text-slate-400" /> {project.area} 呎
+                                <span className="inline-flex items-center gap-1.5 text-sm text-slate-600 bg-slate-100 px-3 py-1 rounded-md font-medium">
+                                    <HardHat className="w-4 h-4 text-slate-400" /> {project.area} 呎
                                 </span>
                             )}
                             {project.budget > 0 && (
-                                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100/50">
-                                    <Wallet className="w-3 h-3" /> HK${project.budget.toLocaleString()}
+                                <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-md">
+                                    <Wallet className="w-4 h-4" /> HK${project.budget.toLocaleString()}
                                 </span>
                             )}
-                            <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
-                                <User className="w-3 h-3 text-slate-400" /> PM:
+                            <span className="inline-flex items-center gap-1.5 text-sm text-slate-600 bg-slate-100 px-3 py-1 rounded-md font-medium">
+                                <User className="w-4 h-4 text-slate-400" /> Sales:
                                 {(userRole === 'admin' || userRole === 'staff') ? (
                                     <Select value={project.pmResponsible || '未指派'} onValueChange={handlePmChange}>
-                                        <SelectTrigger className="h-5 px-1 border-none shadow-none bg-transparent hover:bg-white text-xs font-semibold focus:ring-0 w-auto min-w-[50px] p-0 text-slate-700 data-[state=open]:bg-white">
-                                            <SelectValue placeholder="選擇 PM" />
+                                        <SelectTrigger className="h-6 px-2 border-none shadow-none bg-transparent hover:bg-slate-200 text-sm font-medium focus:ring-0 w-auto min-w-[70px]">
+                                            <SelectValue placeholder="選擇 Sales" />
                                         </SelectTrigger>
                                         <SelectContent align="start">
                                             <SelectItem value="未指派">未指派</SelectItem>
@@ -643,7 +668,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                         </SelectContent>
                                     </Select>
                                 ) : (
-                                    <span className="font-semibold text-slate-700">{project.pmResponsible || '未指派'}</span>
+                                    <span className="font-semibold text-slate-900">{project.pmResponsible || '未指派'}</span>
                                 )}
                             </span>
                         </div>
@@ -699,12 +724,13 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                         </div>
                     )}
 
-                    {/* Clean Pill Tabs */}
+                    {/* Tabs */}
                     <Tabs defaultValue="overview" className="w-full">
-                        <TabsList className="flex w-fit bg-slate-50/50 p-1 border border-slate-100 shadow-sm rounded-lg mb-8">
-                            <TabsTrigger value="overview" className="px-5 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 rounded-md data-[state=active]:shadow-sm">工作流程與資訊</TabsTrigger>
-                            <TabsTrigger value="documents" className="px-5 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 rounded-md data-[state=active]:shadow-sm">文件與圖則</TabsTrigger>
-                            <TabsTrigger value="photos" className="px-5 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 rounded-md data-[state=active]:shadow-sm">現場照片</TabsTrigger>
+                        <TabsList className="mb-8 bg-slate-100/80 p-1.5 rounded-xl h-auto border border-slate-200/60 shadow-sm">
+                            <TabsTrigger value="overview" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">工作流程與資訊</TabsTrigger>
+                            <TabsTrigger value="documents" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">文件與圖則</TabsTrigger>
+                            <TabsTrigger value="photos" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">現場照片</TabsTrigger>
+                            <TabsTrigger value="timeline" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">工程排程 (Timeline)</TabsTrigger>
                         </TabsList>
 
                         {/* Tab: Overview (The Main Workflow Page) */}
@@ -712,48 +738,49 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                             <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
 
                                 {/* LEFT COLUMN: 8-Step Workflow Tracker (Strict Line Layout) */}
-                                <Card className="shadow-sm border-slate-200/80 rounded-xl overflow-hidden bg-white">
-                                    <CardHeader className="pl-8 pt-7 pb-2">
-                                        <CardTitle className="text-lg font-bold text-slate-900 tracking-tight">工程進度追蹤 (S01 - S08)</CardTitle>
-                                        <CardDescription className="text-xs text-slate-400">點擊階段以更新項目狀態</CardDescription>
+                                <Card>
+                                    <CardHeader className="pl-6 pt-6 pb-3">
+                                        <CardTitle className="text-xl font-bold tracking-tight">工程進度追蹤 (S01 - S08)</CardTitle>
+                                        <CardDescription>點擊階段以更新項目狀態</CardDescription>
                                     </CardHeader>
-                                    <CardContent className="px-4 py-8 sm:px-12">
-                                        <div className="relative border-l-2 border-slate-100/80 ml-7 space-y-8 pb-4">
+                                    <CardContent className="px-4 py-6 sm:px-10">
+                                        <div className="relative border-l-2 border-slate-100 ml-7 space-y-6 pb-4">
                                             {ALL_PHASES.map((phase, idx) => {
                                                 const isDone = idx < currentStageIdx;
                                                 const isActive = idx === currentStageIdx;
 
                                                 return (
-                                                    <div key={phase.key} className="relative pl-10 w-full transition-all duration-300">
+                                                    <div key={phase.key} className="relative pl-8 w-full transition-all duration-300">
 
                                                         {/* Dot Indicator on the line */}
                                                         <div className="absolute left-[-9px] top-5 flex items-center justify-center">
                                                             {isActive ? (
                                                                 <div className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center ring-4 ring-white shadow-sm">
-                                                                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                                                    <div className="w-2 h-2 rounded-full bg-blue-600" />
                                                                 </div>
                                                             ) : isDone ? (
                                                                 <div className="w-3.5 h-3.5 rounded-full bg-slate-200 ring-4 ring-white flex items-center justify-center" />
                                                             ) : (
-                                                                <div className="w-3.5 h-3.5 rounded-full bg-slate-100 ring-4 ring-white flex items-center justify-center border border-slate-200/80" />
+                                                                <div className="w-3.5 h-3.5 rounded-full bg-slate-100 ring-4 ring-white flex items-center justify-center border border-slate-200" />
                                                             )}
                                                         </div>
 
                                                         {/* Phase Card */}
                                                         <button
                                                             onClick={() => updateStage(phase.key)}
-                                                            className={`block w-full text-left rounded-xl transition-all max-w-[500px] border ${isActive
-                                                                ? 'bg-blue-50/30 border-blue-200 shadow-[0_2px_8px_-4px_rgba(59,130,246,0.2)] hover:border-blue-300'
-                                                                : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
-                                                                }`}
+                                                            className={`block w-full text-left rounded-lg transition-all max-w-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${isActive
+                                                                ? 'bg-slate-50 border border-slate-200 shadow-sm'
+                                                                : 'bg-slate-100 border border-transparent hover:border-slate-200 hover:bg-slate-50'
+                                                                } ${(!isActive && !isDone && userRole !== 'admin' && !userDepts.includes(phase.dept) && phase.dept !== '—') ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`}
                                                         >
                                                             <div className="flex items-center justify-between px-5 py-4">
-                                                                <h3 className={`font-bold text-sm tracking-tight ${isActive ? 'text-blue-900' : isDone ? 'text-slate-800' : 'text-slate-600'}`}>{phase.label}</h3>
+                                                                <h3 className={`text-base font-bold ${isActive ? 'text-slate-900' : isDone ? 'text-slate-800' : 'text-slate-500'}`}>
+                                                                    {phase.label}
+                                                                </h3>
 
-                                                                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-md tracking-wider ${isActive ? 'bg-blue-100/50 text-blue-700' : 'bg-slate-100/60 text-slate-500'
-                                                                    }`}>
+                                                                <Badge variant="secondary" className={`text-[10px] uppercase font-bold tracking-wider ${isActive ? 'bg-blue-100/50 text-blue-700' : 'text-slate-500'}`}>
                                                                     {phase.dept}
-                                                                </span>
+                                                                </Badge>
                                                             </div>
                                                         </button>
 
@@ -879,9 +906,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
                                     {/* Widget: 項目概覽 — S01 */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('overview') && (
-                                        <Card className="shadow-lg shadow-slate-200/40 border-slate-100 rounded-2xl bg-white">
-                                            <CardHeader className="pb-2 px-6 pt-6">
-                                                <CardTitle className="text-sm font-bold flex items-center gap-2 text-slate-800">
+                                        <Card>
+                                            <CardHeader className="pb-3">
+                                                <CardTitle className="text-base font-bold flex items-center gap-2">
                                                     <HardHat className="h-5 w-5 text-emerald-500" /> 項目概覽
                                                 </CardTitle>
                                             </CardHeader>
@@ -918,9 +945,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
                                     {/* Widget: 項目狀態 — S03, S05-S08 */}
                                     {userRole === 'admin' && (STAGE_WIDGETS[project.stage] || []).includes('status') && (
-                                        <Card className="shadow-lg shadow-slate-200/40 border-slate-100 rounded-2xl bg-white">
-                                            <CardHeader className="pb-2 px-6 pt-6">
-                                                <CardTitle className="text-sm font-bold flex items-center gap-2 text-slate-800">
+                                        <Card>
+                                            <CardHeader className="pb-3">
+                                                <CardTitle className="text-base font-bold flex items-center gap-2">
                                                     <FileText className="h-5 w-5 text-violet-500" /> 項目狀態
                                                 </CardTitle>
                                             </CardHeader>
@@ -985,9 +1012,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
                                     {/* Widget: 施工組合 — S06, S07, S08 */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('construction_team') && (
-                                        <Card className="shadow-lg shadow-slate-200/40 border-slate-100 rounded-2xl bg-white">
-                                            <CardHeader className="pb-2 px-6 pt-6">
-                                                <CardTitle className="text-sm font-bold flex items-center gap-2 text-slate-800">
+                                        <Card>
+                                            <CardHeader className="pb-3">
+                                                <CardTitle className="text-base font-bold flex items-center gap-2 text-slate-900">
                                                     <Users className="h-5 w-5 text-blue-500" /> 施工組合
                                                 </CardTitle>
                                             </CardHeader>
@@ -1029,53 +1056,112 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                         </Card>
                                     )}
 
+                                    {/* Widget: 工程進度 */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('construction_progress') && (
-                                        <Card className="shadow-lg shadow-slate-200/40 border-slate-100 rounded-2xl bg-white">
-                                            <CardHeader className="pb-2 px-6 pt-6 flex flex-row items-center justify-between space-y-0">
-                                                <div>
-                                                    <CardTitle className="text-sm font-bold flex items-center gap-2 text-slate-800">
-                                                        <HardHat className="h-5 w-5 text-orange-500" /> 工程進度
-                                                    </CardTitle>
-                                                    <CardDescription className="text-xs text-slate-400 mt-1">查看專案各階段工序的完成狀況</CardDescription>
-                                                </div>
-                                                <div className="flex items-center gap-1">
-                                                    {(isCurrentStageEditable || userRole === 'admin') && (
-                                                        <Button
-                                                            variant="default" size="sm"
-                                                            onClick={openProgressModal}
-                                                            className="h-8 gap-1.5 text-xs font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 hover:text-orange-800 rounded-lg px-3 shadow-sm border border-orange-200/50"
-                                                        >
-                                                            <Plus className="h-3.5 w-3.5" /> 更新進度
-                                                        </Button>
-                                                    )}
-                                                </div>
+                                        <Card>
+                                            <CardHeader className="pb-3">
+                                                <CardTitle className="text-base font-bold flex items-center gap-2">
+                                                    <HardHat className="h-5 w-5 text-orange-500" /> 工程進度
+                                                </CardTitle>
+                                                <CardDescription>直接點擊展開各工序以勾選完成進度</CardDescription>
                                             </CardHeader>
                                             <CardContent className="px-5 pt-3 pb-5">
-                                                {/* Start/End Dates moved to Modal */}
-
-
                                                 <div className="space-y-3">
                                                     {CONSTRUCTION_PHASES.map((phase) => {
                                                         const phaseData = project[phase.key] || {};
-                                                        const doneCount = phase.fields.filter(f => phaseData[f.key] === true).length;
-                                                        const totalCount = phase.fields.length;
-                                                        const allDone = doneCount === totalCount;
+                                                        const adHocTasks = phaseData.adHocTasks || [];
+                                                        const doneCount = phase.fields.filter(f => phaseData[f.key] === true).length + adHocTasks.filter((t: any) => t.completed).length;
+                                                        const totalCount = phase.fields.length + adHocTasks.length;
+                                                        const allDone = totalCount > 0 && doneCount === totalCount;
                                                         const progressPercent = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
+                                                        const isExpanded = expandedPhases.includes(phase.key);
 
                                                         return (
-                                                            <div key={phase.key} className="flex flex-col gap-1.5 bg-slate-50/50 p-2.5 rounded-xl border border-transparent hover:border-slate-100 transition-colors">
-                                                                <div className="flex items-center justify-between min-w-0">
+                                                            <div key={phase.key} className="flex flex-col bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
+                                                                <button
+                                                                    onClick={() => setExpandedPhases(prev => prev.includes(phase.key) ? prev.filter(k => k !== phase.key) : [...prev, phase.key])}
+                                                                    className="flex items-center justify-between p-4 w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-blue-500 hover:bg-slate-100 transition-colors"
+                                                                >
                                                                     <div className="flex items-center gap-2 min-w-0">
-                                                                        <span className="text-sm shrink-0">{phase.icon}</span>
-                                                                        <span className={`text-[11px] font-semibold truncate ${allDone ? 'text-emerald-700' : 'text-slate-600'}`}>{phase.label}</span>
+                                                                        <span className="text-[16px] shrink-0">{phase.icon}</span>
+                                                                        <span className={`text-[14px] font-semibold tracking-tight ${allDone ? 'text-emerald-700' : 'text-slate-900'}`}>{phase.label}</span>
                                                                     </div>
-                                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ml-2 shrink-0 ${allDone ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                                                                        {doneCount}/{totalCount}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="w-full bg-slate-200/60 rounded-full h-1 mt-0.5 overflow-hidden">
-                                                                    <div className={`h-full transition-all duration-500 ease-out ${allDone ? 'bg-emerald-500' : 'bg-orange-500'}`} style={{ width: `${progressPercent}%` }} />
-                                                                </div>
+                                                                    <div className="flex items-center gap-2 shrink-0">
+                                                                        <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-md ${allDone ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                                                                            {doneCount}/{totalCount}
+                                                                        </span>
+                                                                    </div>
+                                                                </button>
+
+                                                                {!isExpanded && (
+                                                                    <div className="w-full bg-slate-200 h-1 overflow-hidden">
+                                                                        <div className={`h-full transition-all duration-500 ease-out ${allDone ? 'bg-emerald-500' : 'bg-orange-500'}`} style={{ width: `${progressPercent}%` }} />
+                                                                    </div>
+                                                                )}
+
+                                                                {isExpanded && (
+                                                                    <div className="p-3 border-t border-slate-100 bg-white">
+                                                                        <div className="space-y-2 mb-4">
+                                                                            {phase.fields.map((field) => (
+                                                                                <label key={field.key} className="flex items-center gap-3 cursor-pointer group">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={phaseData[field.key] || false}
+                                                                                        disabled={!isCurrentStageEditable && userRole !== 'admin'}
+                                                                                        onChange={() => togglePhaseTask(phase.key, field.key, phaseData[field.key])}
+                                                                                        className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500 disabled:opacity-50"
+                                                                                    />
+                                                                                    <span className={`text-xs font-semibold select-none ${phaseData[field.key] ? 'text-slate-400 line-through' : 'text-slate-700 group-hover:text-slate-900'}`}>
+                                                                                        {field.label}
+                                                                                    </span>
+                                                                                </label>
+                                                                            ))}
+                                                                            {adHocTasks.map((t: any, idx: number) => (
+                                                                                <label key={t.id} className="flex items-center gap-3 cursor-pointer group">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={t.completed}
+                                                                                        disabled={!isCurrentStageEditable && userRole !== 'admin'}
+                                                                                        onChange={async () => {
+                                                                                            const updatedTasks = [...adHocTasks];
+                                                                                            updatedTasks[idx].completed = !updatedTasks[idx].completed;
+                                                                                            const updatedPhaseData = { ...phaseData, adHocTasks: updatedTasks };
+                                                                                            setProject((prev: any) => ({ ...prev, [phase.key]: updatedPhaseData }));
+                                                                                            await fetch(`/api/projects/${projectId}`, {
+                                                                                                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                                                                                                body: JSON.stringify({ [phase.key]: updatedPhaseData })
+                                                                                            });
+                                                                                        }}
+                                                                                        className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500 disabled:opacity-50"
+                                                                                    />
+                                                                                    <span className={`text-xs font-semibold select-none ${t.completed ? 'text-slate-400 line-through' : 'text-slate-700 group-hover:text-slate-900'}`}>
+                                                                                        {t.title}
+                                                                                    </span>
+                                                                                </label>
+                                                                            ))}
+                                                                        </div>
+                                                                        
+                                                                        {(isCurrentStageEditable || userRole === 'admin') && (
+                                                                            <Button 
+                                                                                variant="outline" size="sm" 
+                                                                                onClick={async () => {
+                                                                                    const title = prompt('新增工作項目名稱：');
+                                                                                    if (!title) return;
+                                                                                    const newTask = { id: Date.now().toString(), title, completed: false };
+                                                                                    const updatedPhaseData = { ...phaseData, adHocTasks: [...adHocTasks, newTask] };
+                                                                                    setProject((prev: any) => ({ ...prev, [phase.key]: updatedPhaseData }));
+                                                                                    await fetch(`/api/projects/${projectId}`, {
+                                                                                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                                                                                        body: JSON.stringify({ [phase.key]: updatedPhaseData })
+                                                                                    });
+                                                                                }}
+                                                                                className="h-7 text-[10px] w-full border-dashed border-slate-300 text-slate-500 hover:text-slate-800"
+                                                                            >
+                                                                                <Plus className="h-3 w-3 mr-1" /> 新增自訂項目
+                                                                            </Button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}
@@ -1086,9 +1172,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
                                     {/* Widget: 約見記錄 — S01-S05 */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('meetings') && (
-                                        <Card className="shadow-lg shadow-slate-200/40 border-slate-100 rounded-2xl bg-white">
-                                            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0 px-6 pt-6">
-                                                <CardTitle className="text-sm font-bold flex items-center gap-2 text-slate-800">
+                                        <Card>
+                                            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                                                <CardTitle className="text-base font-bold flex items-center gap-2">
                                                     <Clock className="h-5 w-5 text-amber-500" /> 約見記錄
                                                 </CardTitle>
                                                 <div className="flex items-center gap-1">
@@ -1159,9 +1245,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
                                     {/* Widget: 設計連結 — S02, S04 */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('design_links') && (
-                                        <Card className="shadow-lg shadow-slate-200/40 border-slate-100 rounded-2xl bg-white">
-                                            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0 px-6 pt-6">
-                                                <CardTitle className="text-sm font-bold flex items-center gap-2 text-slate-800">
+                                        <Card>
+                                            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                                                <CardTitle className="text-base font-bold flex items-center gap-2">
                                                     <LinkIcon className="h-5 w-5 text-blue-500" /> 設計連結
                                                 </CardTitle>
                                                 {(isCurrentStageEditable || userRole === 'admin') && (
@@ -1199,9 +1285,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
                                     {/* Widget: 附加備註 — all stages */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('notes') && (
-                                        <Card className="shadow-lg shadow-slate-200/40 border-slate-100 rounded-2xl bg-white">
-                                            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0 px-6 pt-6">
-                                                <CardTitle className="text-sm font-bold text-slate-800">附加備註</CardTitle>
+                                        <Card>
+                                            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                                                <CardTitle className="text-base font-bold">附加備註</CardTitle>
                                                 {(isCurrentStageEditable || userRole === 'admin') && (
                                                     <Button variant="ghost" size="icon" onClick={saveDetails} disabled={savingDetails} className="h-7 w-7 text-slate-600 hover:text-slate-700 hover:bg-slate-100 rounded-md">
                                                         {savingDetails ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -1225,22 +1311,22 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                         </TabsContent>
 
                         {/* Tab: Documents */}
-                        < TabsContent value="documents" className="mt-0 outline-none" >
-                            <Card className="shadow-lg shadow-slate-200/40 border-slate-100 rounded-2xl bg-white h-full min-h-[500px]">
-                                <CardHeader className="flex flex-row items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl">
+                        <TabsContent value="documents" className="mt-0 outline-none">
+                            <Card className="h-full min-h-[500px]">
+                                <CardHeader className="flex flex-row items-center justify-between">
                                     <div>
-                                        <CardTitle className="text-base font-semibold">文件檔案</CardTitle>
-                                        <CardDescription>集中管理報價單及合約 (<span className="text-xs">PDF/圖片</span>)</CardDescription>
+                                        <CardTitle className="text-xl font-bold tracking-tight">文件檔案</CardTitle>
+                                        <CardDescription>集中管理報價單及合約 (PDF/圖片)</CardDescription>
                                     </div>
                                     {(isCurrentStageEditable || userRole === 'admin') && (
-                                        <Button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="h-9 gap-2 bg-slate-900 text-white hover:bg-slate-800 text-sm shadow-sm ring-1 ring-slate-900/10">
-                                            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                                        <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                                            {uploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UploadCloud className="w-4 h-4 mr-2" />}
                                             快速上傳
                                         </Button>
                                     )}
                                     <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx" onChange={handleFileUpload} />
                                 </CardHeader>
-                                <CardContent className="p-0">
+                                <CardContent className="p-6">
                                     {project.files.filter((f: any) => f.type !== 'photo').length === 0 ? (
                                         <div className="flex flex-col items-center justify-center py-24 text-center">
                                             <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center mb-4 border border-slate-100">
@@ -1250,38 +1336,63 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                             <p className="text-xs text-slate-400 mt-1 max-w-[200px] leading-relaxed">點擊上方按鈕上傳與此工程相關的設計圖則或報價合約</p>
                                         </div>
                                     ) : (
-                                        <div className="divide-y divide-slate-100">
-                                            {project.files.filter((f: any) => f.type !== 'photo').map((file: any) => (
-                                                <div key={file.id} className="flex items-center justify-between p-4 bg-white hover:bg-slate-50/80 transition-colors group">
-                                                    <div className="flex items-center gap-4 min-w-0">
-                                                        <div className="w-10 h-10 rounded-xl bg-blue-50/50 border border-blue-100/50 text-blue-600 flex items-center justify-center shrink-0">
-                                                            <File className="w-5 h-5 text-blue-500" />
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <a href={file.url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-slate-700 hover:text-blue-600 transition-colors line-clamp-1">{file.name}</a>
-                                                            <div className="flex items-center gap-2 text-[11px] font-medium text-slate-400 mt-1">
-                                                                <span>{new Date(file.uploadedAt).toLocaleDateString()}</span>
-                                                                <span className="w-1 h-1 rounded-full bg-slate-300" />
-                                                                <span className="uppercase text-slate-500">{file.type === 'quotation' ? '報價單' : file.type === 'drawing' ? '圖則' : file.type === 'contract' ? '合約' : '文件'}</span>
+                                        <div className="space-y-6">
+                                            {(() => {
+                                                const nonPhotos = project.files.filter((f: any) => f.type !== 'photo');
+                                                // Archive logic: any quotation not tracking vLatest
+                                                const quotes = nonPhotos.filter((f: any) => f.type === 'quotation').sort((a: any, b: any) => b.name.localeCompare(a.name));
+                                                const activeQuote = quotes.length > 0 ? quotes[0] : null;
+                                                const archiveQuotes = quotes.slice(1);
+                                                
+                                                const folders = [
+                                                    { id: 'quotation', title: '報價單與官方合約', icon: <FileText className="w-4 h-4" />, files: [...(activeQuote ? [activeQuote] : []), ...nonPhotos.filter((f: any) => f.type === 'contract')] },
+                                                    { id: 'drawing', title: '設計圖則 (平面圖/3D)', icon: <ImageIcon className="w-4 h-4" />, files: nonPhotos.filter((f: any) => f.type === 'drawing') },
+                                                    { id: 'other', title: '客戶來料與雜項檔案', icon: <Paperclip className="w-4 h-4" />, files: nonPhotos.filter((f: any) => f.type === 'other' || !['quotation', 'contract', 'drawing'].includes(f.type)) },
+                                                    { id: 'archive', title: '歸檔 (歷史版本)', icon: <Inbox className="w-4 h-4" />, files: archiveQuotes },
+                                                ];
+
+                                                return folders.map(folder => {
+                                                    if (folder.files.length === 0) return null;
+                                                    return (
+                                                        <div key={folder.id} className="border border-[#E8E8ED] bg-white rounded-2xl overflow-hidden shadow-sm">
+                                                            <div className="bg-[#F5F5F7]/80 px-4 py-3 flex items-center gap-2 border-b border-[#E8E8ED]">
+                                                                <span className="text-[#86868B]">{folder.icon}</span>
+                                                                <h4 className="text-[13px] font-bold text-[#1D1D1F] tracking-wide">{folder.title}</h4>
+                                                                <Badge variant="outline" className="ml-2 bg-white text-[#86868B] border-[#D1D1D6] px-1.5 py-0 min-w-[20px] text-center">{folder.files.length}</Badge>
+                                                            </div>
+                                                            <div className="divide-y divide-[#F5F5F7]">
+                                                                {folder.files.map((file: any) => (
+                                                                    <div key={file.id} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-[#F5F5F7] transition-colors group">
+                                                                        <div className="flex items-center gap-3.5 min-w-0">
+                                                                            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
+                                                                                <File className="w-4 h-4 text-blue-600" />
+                                                                            </div>
+                                                                            <div className="min-w-0">
+                                                                                <a href={file.url} target="_blank" rel="noreferrer" className="text-[13px] font-bold text-[#1D1D1F] hover:text-[#0071E3] transition-colors line-clamp-1">{file.name}</a>
+                                                                                <div className="flex items-center gap-2 text-[10px] font-medium text-[#86868B] mt-0.5">
+                                                                                    <span>{new Date(file.uploadedAt).toLocaleDateString()}</span>
+                                                                                    <span className="w-1 h-1 rounded-full bg-[#D1D1D6]" />
+                                                                                    <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                            <a href={file.url} target="_blank" rel="noreferrer" className="p-2 text-[#86868B] hover:text-[#0071E3] hover:bg-blue-50 rounded-lg transition-colors">
+                                                                                <Download className="w-4 h-4" />
+                                                                            </a>
+                                                                            {(isCurrentStageEditable || userRole === 'admin') && (
+                                                                                <button onClick={() => handleDeleteFile(file.id, file.name)} className="p-2 text-[#86868B] hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="刪除檔案">
+                                                                                    <Trash2 className="w-4 h-4" />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5 shrink-0">
-                                                        <a href={file.url} target="_blank" rel="noreferrer" className="p-2 text-slate-400 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors">
-                                                            <Download className="w-4 h-4" />
-                                                        </a>
-                                                        {(isCurrentStageEditable || userRole === 'admin') && (
-                                                            <button
-                                                                onClick={() => handleDeleteFile(file.id, file.name)}
-                                                                className="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                                                                title="刪除檔案"
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                    );
+                                                });
+                                            })()}
                                         </div>
                                     )}
                                 </CardContent>
@@ -1289,20 +1400,21 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                         </TabsContent >
 
                         {/* Tab: Photos */}
-                        < TabsContent value="photos" className="mt-0 outline-none" >
-                            <Card className="shadow-lg shadow-slate-200/40 border-slate-100 rounded-2xl bg-white p-6 md:p-8">
-                                <div className="flex items-center justify-between mb-6">
+                        <TabsContent value="photos" className="mt-0 outline-none">
+                            <Card className="min-h-[500px]">
+                                <CardHeader className="flex flex-row items-center justify-between border-b">
                                     <div>
-                                        <h3 className="text-base font-semibold text-slate-800">現場照片與影片相簿</h3>
-                                        <p className="text-xs text-slate-500 mt-1">紀錄工程前後及各種損耗細節</p>
+                                        <CardTitle className="text-xl font-bold tracking-tight">現場照片與影片相簿</CardTitle>
+                                        <CardDescription>紀錄工程前後及各種損耗細節</CardDescription>
                                     </div>
                                     {(isCurrentStageEditable || userRole === 'admin') && (
-                                        <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()} disabled={uploading} className="h-9 gap-2 text-sm shadow-sm">
-                                            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} 上傳媒體
+                                        <Button onClick={() => photoInputRef.current?.click()} disabled={uploading}>
+                                            {uploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UploadCloud className="w-4 h-4 mr-2" />} 上傳媒體
                                         </Button>
                                     )}
                                     <input ref={photoInputRef} type="file" className="hidden" accept="image/*,video/mp4,video/quicktime" onChange={handleFileUpload} />
-                                </div>
+                                </CardHeader>
+                                <CardContent className="p-6">
 
                                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                     {project.files.filter((f: any) => f.type === 'photo').map((photo: any) => (
@@ -1330,17 +1442,117 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                         </div>
                                     ))}
                                     {project.files.filter((f: any) => f.type === 'photo').length === 0 && (
-                                        <div className="col-span-full py-20 mt-4 text-center border border-dashed border-slate-300 bg-slate-50/50 rounded-2xl">
-                                            <div className="w-14 h-14 bg-white rounded-full shadow-sm border border-slate-100 flex items-center justify-center mx-auto mb-3">
-                                                <ImageIcon className="w-6 h-6 text-slate-400" />
+                                        <div className="col-span-full py-32 flex flex-col items-center justify-center text-center bg-white border border-[#E8E8ED] shadow-sm rounded-[24px]">
+                                            <div className="w-16 h-16 bg-[#F5F5F7] rounded-[16px] border border-[#D1D1D6] flex items-center justify-center mb-5 rotate-3 hover:rotate-0 transition-transform">
+                                                <ImageIcon className="w-8 h-8 text-[#86868B]" />
                                             </div>
-                                            <p className="text-sm font-semibold text-slate-600 block mb-1">相簿是空的</p>
-                                            <p className="text-xs font-medium text-slate-400">目前還沒有上傳任何相片</p>
+                                            <h3 className="text-[16px] font-bold text-[#1D1D1F] tracking-wide mb-1.5">相簿是空的</h3>
+                                            <p className="text-[13px] font-semibold text-[#86868B] max-w-[220px] leading-relaxed">
+                                                目前還沒有上傳任何相片。<br/>請點擊右上方按鈕上傳紀錄。
+                                            </p>
                                         </div>
                                     )}
                                 </div>
+                                </CardContent>
                             </Card>
                         </TabsContent >
+
+                        {/* Tab: Timeline */}
+                        <TabsContent value="timeline" className="mt-0 outline-none">
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between border-b pb-4 mb-4">
+                                    <div>
+                                        <CardTitle className="text-xl font-bold tracking-tight">工程排程甘特圖 (Mode B)</CardTitle>
+                                        <CardDescription>獨立地盤的生命週期排程。輸入預計開工日及天數自動計算完工日 (避開星期日與特定公眾假期)。</CardDescription>
+                                    </div>
+                                    <div className="flex flex-col text-right">
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">系統預設開工日</p>
+                                        <p className="text-sm font-bold text-slate-900">{project.startDate || '未設定'}</p>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="px-6 pb-6">
+                                    <div className="space-y-4">
+                                    <div className="grid grid-cols-[minmax(120px,1.5fr)_1fr_80px_1fr] md:grid-cols-[minmax(200px,2fr)_1fr_100px_1fr] gap-4 px-4 py-2 border-b border-slate-200/60 pb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                        <div>工序 / 階段名稱</div>
+                                        <div>預計開工日期</div>
+                                        <div>工作天數</div>
+                                        <div>自動推算完工日期</div>
+                                    </div>
+                                    {CONSTRUCTION_PHASES.map((phase, idx) => {
+                                        const pData = project[phase.key] || {};
+                                        // Default startDate to project.startDate for first phase if unset, otherwise keep empty
+                                        const effectiveStart = pData.startDate || (idx === 0 ? project.startDate : '');
+                                        const calculatedEnd = pData.completionDate || (effectiveStart && pData.days ? addWorkingDays(effectiveStart, Number(pData.days)) : '');
+
+                                        return (
+                                            <div key={phase.key} className="grid grid-cols-[minmax(120px,1.5fr)_1fr_80px_1fr] md:grid-cols-[minmax(200px,2fr)_1fr_100px_1fr] gap-4 px-4 py-3 bg-slate-50/50 hover:bg-slate-50 rounded-xl items-center border border-transparent hover:border-slate-100 transition-colors">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <span className="text-slate-400">{phase.icon}</span>
+                                                    <span className="text-[13px] font-bold text-slate-700 truncate">{phase.label}</span>
+                                                </div>
+                                                <div>
+                                                    <Input
+                                                        type="date"
+                                                        value={effectiveStart}
+                                                        disabled={!isCurrentStageEditable && userRole !== 'admin'}
+                                                        onChange={async (e) => {
+                                                            const newStart = e.target.value;
+                                                            const newDays = pData.days || 3;
+                                                            const newEnd = addWorkingDays(newStart, Number(newDays));
+                                                            const updatedPhase = { ...pData, startDate: newStart, days: newDays, completionDate: newEnd };
+                                                            setProject((prev: any) => ({ ...prev, [phase.key]: updatedPhase }));
+                                                            await fetch(`/api/projects/${projectId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [phase.key]: updatedPhase }) });
+                                                        }}
+                                                        className="h-9 text-xs bg-white focus-visible:ring-blue-500/20"
+                                                    />
+                                                </div>
+                                                <div className="relative">
+                                                    <Input
+                                                        type="number" min="0" placeholder="天數"
+                                                        value={pData.days || ''}
+                                                        disabled={!isCurrentStageEditable && userRole !== 'admin'}
+                                                        onChange={async (e) => {
+                                                            const newDays = e.target.value;
+                                                            const newEnd = effectiveStart ? addWorkingDays(effectiveStart, Number(newDays)) : '';
+                                                            const updatedPhase = { ...pData, days: newDays, completionDate: newEnd };
+                                                            setProject((prev: any) => ({ ...prev, [phase.key]: updatedPhase }));
+                                                            await fetch(`/api/projects/${projectId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [phase.key]: updatedPhase }) });
+                                                        }}
+                                                        className="h-9 text-xs bg-white focus-visible:ring-blue-500/20"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-9 flex items-center px-3 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-md w-full shadow-sm">
+                                                        {calculatedEnd ? new Date(calculatedEnd).toLocaleDateString('zh-HK') : '—'}
+                                                    </div>
+                                                    {(isCurrentStageEditable || userRole === 'admin') && calculatedEnd && idx < CONSTRUCTION_PHASES.length - 1 && (
+                                                        <button
+                                                            type="button"
+                                                            title="將此作爲下一階段開工日"
+                                                            onClick={async () => {
+                                                                const nextPhase = CONSTRUCTION_PHASES[idx + 1];
+                                                                const nextPhaseData = project[nextPhase.key] || {};
+                                                                // Next phase starts next day essentially? Standardly it can be next working day.
+                                                                const nextStart = addWorkingDays(calculatedEnd, 1);
+                                                                const nextEnd = nextStart && nextPhaseData.days ? addWorkingDays(nextStart, Number(nextPhaseData.days)) : '';
+                                                                const updatedNextPhase = { ...nextPhaseData, startDate: nextStart, completionDate: nextEnd };
+                                                                setProject((prev: any) => ({ ...prev, [nextPhase.key]: updatedNextPhase }));
+                                                                await fetch(`/api/projects/${projectId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [nextPhase.key]: updatedNextPhase }) });
+                                                                toast.success(`聯動成功！${nextPhase.label} 開工日已設為 ${nextStart}`);
+                                                            }}
+                                                            className="shrink-0 p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                                                        >
+                                                            <LinkIcon className="h-4 w-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
                     </Tabs >
                 </div >
             </motion.div >
@@ -1384,40 +1596,41 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             </Dialog>
             {/* 工程進度 Bulk Edit Modal */}
             <Dialog open={isProgressModalOpen} onOpenChange={setIsProgressModalOpen}>
-                <DialogContent className="sm:max-w-xl overflow-y-auto max-h-[85vh] custom-scrollbar p-6 sm:p-8">
-                    <DialogHeader className="mb-6">
-                        <DialogTitle className="flex items-center gap-2 text-slate-800 tracking-tight font-bold text-[18px]">
-                            <HardHat className="w-5 h-5 text-orange-500" /> 更新工程進度
+                <DialogContent className="sm:max-w-xl flex flex-col overflow-hidden max-h-[85vh] p-0 border-none rounded-[24px] shadow-2xl bg-[#F5F5F7]">
+                    <div className="shrink-0 z-10 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-[#E8E8ED] px-7 py-5">
+                        <DialogTitle className="flex items-center gap-2.5 text-[#1D1D1F] tracking-tight font-bold text-[18px]">
+                            <HardHat className="w-5 h-5 text-[#0071E3]" /> 更新工程進度
                         </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto custom-scrollbar px-7 py-6 space-y-6">
                         {/* Dates Grid in Modal */}
-                        <div className="flex gap-8 p-6 bg-white rounded-3xl border border-[#E8E8ED] shadow-sm mb-6">
-                            <div className="flex-1 space-y-2.5">
-                                <label className="text-[12px] font-bold text-[#424245] tracking-wide ml-1">
-                                    施工開始日期
-                                </label>
-                                <Input
-                                    type="date"
-                                    value={tempStartDate}
-                                    onChange={e => setTempStartDate(e.target.value)}
-                                    className="h-12 text-[14px] font-medium bg-[#F5F5F7] border-transparent hover:bg-[#E8E8ED] hover:border-transparent transition-colors rounded-xl px-4 shadow-none focus-visible:ring-2 focus-visible:ring-orange-500/20"
-                                />
-                            </div>
-                            <div className="flex-1 space-y-2.5">
-                                <label className="text-[12px] font-bold text-[#424245] tracking-wide ml-1">
-                                    預計完工日期
-                                </label>
-                                <Input
-                                    type="date"
-                                    value={tempEndDate}
-                                    onChange={e => setTempEndDate(e.target.value)}
-                                    className="h-12 text-[14px] font-medium bg-[#F5F5F7] border-transparent hover:bg-[#E8E8ED] hover:border-transparent transition-colors rounded-xl px-4 shadow-none focus-visible:ring-2 focus-visible:ring-orange-500/20"
-                                />
+                        <div className="bg-white rounded-[16px] border border-[#E8E8ED] shadow-sm p-5 space-y-4">
+                            <h4 className="text-[12px] font-bold text-[#86868B] uppercase tracking-wider">排程日期</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[12px] font-bold text-[#1D1D1F]">施工開始</label>
+                                    <Input
+                                        type="date"
+                                        value={tempStartDate}
+                                        onChange={e => setTempStartDate(e.target.value)}
+                                        className="h-10 text-[14px] font-medium bg-white border-[#D1D1D6] hover:border-[#86868B] transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-[#0071E3]/20"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[12px] font-bold text-[#1D1D1F]">預計完工</label>
+                                    <Input
+                                        type="date"
+                                        value={tempEndDate}
+                                        onChange={e => setTempEndDate(e.target.value)}
+                                        className="h-10 text-[14px] font-medium bg-white border-[#D1D1D6] hover:border-[#86868B] transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-[#0071E3]/20"
+                                    />
+                                </div>
                             </div>
                         </div>
-                        <div className="flex flex-col">
+
+                        {/* Phases Accordion */}
+                        <div className="bg-white rounded-[16px] border border-[#E8E8ED] shadow-sm overflow-hidden flex flex-col divide-y divide-[#E8E8ED]">
                             {CONSTRUCTION_PHASES.map((phase) => {
                                 const phaseData = tempProgressData[phase.key] || {};
                                 const doneCount = phase.fields.filter(f => phaseData[f.key] === true).length;
@@ -1426,18 +1639,18 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                 const isExpanded = expandedPhases.includes(phase.key);
 
                                 return (
-                                    <div key={phase.key} className={`bg-white transition-all overflow-hidden ${isExpanded ? 'my-3 rounded-2xl border border-[#E8E8ED] shadow-sm' : 'border-b border-slate-100 last:border-0 hover:bg-slate-50/50'}`}>
+                                    <div key={phase.key} className="bg-white transition-colors">
                                         <button
                                             type="button"
                                             onClick={() => setExpandedPhases(prev => prev.includes(phase.key) ? prev.filter(k => k !== phase.key) : [...prev, phase.key])}
-                                            className={`w-full flex items-center justify-between px-6 transition-all ${isExpanded ? 'pt-5 pb-3' : 'py-4'}`}
+                                            className={`w-full flex items-center justify-between px-5 transition-all outline-none ${isExpanded ? 'bg-[#F5F5F7] py-4' : 'hover:bg-[#F5F5F7] py-4'}`}
                                         >
                                             <div className="flex items-center gap-3.5 min-w-0">
-                                                <span className="text-base shrink-0">{phase.icon}</span>
-                                                <span className={`text-[14px] tracking-wide font-bold truncate ${allDone ? 'text-emerald-700' : 'text-[#1D1D1F]'}`}>{phase.label}</span>
+                                                <span className="text-base shrink-0 opacity-80">{phase.icon}</span>
+                                                <span className={`text-[14px] tracking-wide font-bold truncate ${allDone ? 'text-emerald-600' : 'text-[#1D1D1F]'}`}>{phase.label}</span>
                                             </div>
-                                            <div className="flex items-center gap-4 shrink-0">
-                                                <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${allDone ? 'bg-emerald-50 text-emerald-600' : 'bg-[#F5F5F7] text-[#86868B]'}`}>
+                                            <div className="flex items-center gap-3 shrink-0">
+                                                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${allDone ? 'bg-emerald-100/50 text-emerald-600' : 'bg-[#E8E8ED] text-[#424245]'}`}>
                                                     {doneCount}/{totalCount}
                                                 </span>
                                                 <ChevronDown className={`h-4 w-4 text-[#86868B] transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -1445,26 +1658,24 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                         </button>
 
                                         {isExpanded && (
-                                            <div className="bg-white px-6 pb-5 pt-1 space-y-1">
+                                            <div className="bg-white px-2 py-2">
                                                 {phase.fields.map((field) => {
                                                     const checked = phaseData[field.key] === true;
                                                     return (
-                                                        <label key={field.key} className="flex items-center gap-4 py-3 px-3 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors group">
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => { e.preventDefault(); toggleTempPhaseTask(phase.key, field.key, checked); }}
-                                                                className="shrink-0 flex items-center justify-center pointer-events-none"
-                                                            >
-                                                                {checked ? (
-                                                                    <CheckCircle2 className="h-[22px] w-[22px] text-[#A5B4FC]" />
-                                                                ) : (
-                                                                    <div className="h-[22px] w-[22px] rounded-full border-2 border-[#E8E8ED] group-hover:border-slate-300 transition-colors bg-white hover:bg-slate-50" />
-                                                                )}
-                                                            </button>
-                                                            <span className={`text-[13px] font-semibold tracking-wide ${checked ? 'text-slate-400 line-through' : 'text-[#424245]'}`}>
+                                                        <button 
+                                                            key={field.key} 
+                                                            onClick={(e) => { e.preventDefault(); toggleTempPhaseTask(phase.key, field.key, checked); }}
+                                                            className="w-full flex items-center gap-3.5 py-3 px-4 mx-2 my-1 rounded-xl hover:bg-[#F5F5F7] cursor-pointer transition-colors group outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3]/30"
+                                                        >
+                                                            <div className="shrink-0 flex items-center justify-center pointer-events-none relative">
+                                                                <div className={`h-[20px] w-[20px] rounded-[6px] border-2 transition-all flex items-center justify-center ${checked ? 'bg-[#0071E3] border-[#0071E3]' : 'bg-white border-[#D1D1D6] group-hover:border-[#0071E3]/50'}`}>
+                                                                    {checked && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                                </div>
+                                                            </div>
+                                                            <span className={`text-[13px] font-bold tracking-wide select-none ${checked ? 'text-[#86868B] line-through decoration-[#D1D1D6]' : 'text-[#424245]'}`}>
                                                                 {field.label}
                                                             </span>
-                                                        </label>
+                                                        </button>
                                                     );
                                                 })}
                                             </div>
@@ -1474,12 +1685,12 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                             })}
                         </div>
                     </div>
-                    <DialogFooter className="pt-5 pb-3 mt-2">
-                        <Button variant="outline" onClick={() => setIsProgressModalOpen(false)} className="rounded-xl h-10 px-6 font-bold text-[#424245] border-transparent hover:bg-[#F5F5F7]">取消</Button>
-                        <Button onClick={handleSaveProgressDetails} disabled={savingProgress} className="bg-orange-500 hover:bg-orange-600 text-white rounded-xl h-10 px-8 font-bold border-none transition-all shadow-[0_2px_10px_rgba(249,115,22,0.2)] hover:shadow-[0_4px_16px_rgba(249,115,22,0.4)]">
+                    <div className="shrink-0 px-7 py-4 border-t border-[#E8E8ED] bg-white flex justify-end gap-3 rounded-b-[24px]">
+                        <Button variant="outline" onClick={() => setIsProgressModalOpen(false)} className="h-10 rounded-xl px-5 text-[13px] font-bold">取消</Button>
+                        <Button onClick={handleSaveProgressDetails} disabled={savingProgress} className="h-10 rounded-xl px-6 bg-[#0071E3] hover:bg-[#0077ED] text-white font-bold shadow-sm">
                             {savingProgress ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 儲存進度
                         </Button>
-                    </DialogFooter>
+                    </div>
                 </DialogContent>
             </Dialog>
 

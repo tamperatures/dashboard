@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/layout/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -66,6 +66,32 @@ const STAGE_DEPARTMENTS: Record<string, string> = {
     'S08_工程完成': '工程部',
 };
 
+// 用於推算當下子任務
+const CONSTRUCTION_PHASES = [
+    { key: 'phase1SitePrep', label: '1. 工地準備', fields: [ { key: 'adminApplication', label: '入則申請' }, { key: 'insurance', label: '保險' }, { key: 'tempUtilities', label: '臨時水電' }, { key: 'publicProtection', label: '公眾保護' }, { key: 'itemProtection', label: '物品保護' } ] },
+    { key: 'phase2Demolition', label: '2. 清拆廢物', fields: [ { key: 'survey', label: '勘查' }, { key: 'execution', label: '清拆執行' }, { key: 'noiseControl', label: '噪音控制' }, { key: 'wasteDisposal', label: '廢物處理' } ] },
+    { key: 'phase3Plumbing', label: '3. 水電煤', fields: [ { key: 'brickwork', label: '砌磚' }, { key: 'trenching', label: '開坑' }, { key: 'positioning', label: '定位' }, { key: 'gasWork', label: '煤氣' } ] },
+    { key: 'phase4Masonry', label: '4. 泥水防水', fields: [ { key: 'plastering', label: '批盪' }, { key: 'waterproofing', label: '防水' }, { key: 'tiling', label: '鋪磚' }, { key: 'leveling', label: '找平' } ] },
+    { key: 'phase5Carpentry', label: '5. 木工油漆', fields: [ { key: 'ceilingFeature', label: '天花' }, { key: 'wallPreparation', label: '牆身' }, { key: 'woodworkPainting', label: '油漆' } ] },
+    { key: 'phase6Installation', label: '6. 後期安裝', fields: [ { key: 'furnitureAssembly', label: '傢俬組裝' }, { key: 'doorFloor', label: '門板' }, { key: 'fixtures', label: '潔具' } ] },
+    { key: 'phase7PreInspection', label: '7. 預驗收', fields: [ { key: 'internalCheck', label: '內檢' }, { key: 'defectFix', label: '修復' }, { key: 'basicCleaning', label: '清潔' } ] },
+    { key: 'phase8OfficialInspection', label: '8. 客戶驗收', fields: [ { key: 'jointInspection', label: '聯驗' }, { key: 'defectList', label: '缺陷清單' }, { key: 'rectification', label: '執漏' } ] },
+    { key: 'phase9Handover', label: '9. 結算尾款', fields: [ { key: 'finalSettlement', label: '尾款' }, { key: 'docHandover', label: '交接' } ] },
+    { key: 'phase10Maintenance', label: '10. 保養', fields: [ { key: 'warrantyPeriod', label: '保養' }, { key: 'maintenanceRecord', label: '維修' } ] },
+];
+
+function getActiveTask(p: any) {
+    if (!['S06_工程啟動', 'S07_工程進行中', 'S08_工程完成'].includes(p.stage)) return null;
+    for (const phase of CONSTRUCTION_PHASES) {
+        for (const field of phase.fields) {
+            if (!p[phase.key]?.[field.key]) {
+                return { phaseLabel: phase.label, taskLabel: field.label };
+            }
+        }
+    }
+    return { phaseLabel: '10. 保養', taskLabel: '全部完成' };
+}
+
 /* ───────── Animation ───────── */
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const fadeUp = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 260, damping: 20 } } };
@@ -83,6 +109,13 @@ export default function ProjectsPage() {
     const [loading, setLoading] = useState(true);
     const [selectedStage, setSelectedStage] = useState<string | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        if (searchParams.get('new') === '1') {
+            setShowCreateModal(true);
+        }
+    }, [searchParams]);
 
     // Form state
     const [formClient, setFormClient] = useState('');
@@ -91,7 +124,7 @@ export default function ProjectsPage() {
     const [formType, setFormType] = useState('全屋裝修');
     const [formBudget, setFormBudget] = useState('');
     const [formArea, setFormArea] = useState('');
-    const [formFamilyStructure, setFormFamilyStructure] = useState('');
+    const [familyConfig, setFamilyConfig] = useState({ elder: 0, adult: 0, child: 0, helper: 0 });
     const [formStartDate, setFormStartDate] = useState('');
     const [formNotes, setFormNotes] = useState('');
     const [formPm, setFormPm] = useState('未指派');
@@ -120,6 +153,7 @@ export default function ProjectsPage() {
             const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
             if (!res.ok) throw new Error('上傳失敗');
             const data = await res.json();
+            toast.success(`✔️ 成功上傳：${data.fileName}`);
             setModalFiles(prev => [...prev, { name: data.fileName, url: data.url, type: file.type.startsWith('image/') ? 'photo' : 'other' }]);
         } catch (err: any) {
             toast.error(err.message || '上傳失敗');
@@ -133,7 +167,7 @@ export default function ProjectsPage() {
         setFormClient(''); setFormAddress(''); setFormBudget('');
         setFormArea(''); setFormNotes(''); setFormPm('未指派');
         setFormPropertyType('私樓 (Private)'); setFormType('全屋裝修');
-        setFormFamilyStructure(''); setFormStartDate('');
+        setFamilyConfig({ elder: 0, adult: 0, child: 0, helper: 0 }); setFormStartDate('');
         setModalFiles([]);
     };
 
@@ -180,10 +214,15 @@ export default function ProjectsPage() {
                     estate: formAddress.split(' ')[0] || formClient,
                     address: formAddress,
                     renovationType: formType,
-                    budget: Number(formBudget) || 0,
+                    budget: Number(formBudget) * 10000 || 0,
                     propertyType: formPropertyType.split(' ')[0],
                     area: formArea,
-                    familyStructure: formFamilyStructure,
+                    familyStructure: [
+                        familyConfig.elder > 0 && `${familyConfig.elder}長者`,
+                        familyConfig.adult > 0 && `${familyConfig.adult}大人`,
+                        familyConfig.child > 0 && `${familyConfig.child}小孩`,
+                        familyConfig.helper > 0 && `${familyConfig.helper}工人`
+                    ].filter(Boolean).join(' ') || '未提供',
                     status: 'In Progress',
                     startDate: formStartDate,
                     notes: formNotes,
@@ -258,49 +297,39 @@ export default function ProjectsPage() {
     return (
         <motion.div className="max-w-[1600px] mx-auto space-y-6 pb-12 px-4 sm:px-6 lg:px-8 mt-2" initial="hidden" animate="show" variants={container}>
             {/* Header / Hero Section */}
-            <motion.div variants={fadeUp} className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-[#1c2331] via-[#2c3545] to-[#1c2331] text-white p-8 sm:p-10 shadow-lg mb-6">
-                <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3 pointer-events-none" />
-                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-500/10 rounded-full blur-[80px] translate-y-1/3 -translate-x-1/4 pointer-events-none" />
-
-                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-                    <div>
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-4">
-                            <Briefcase className="w-4 h-4 text-blue-300" />
-                            <span className="text-[11px] font-bold tracking-wider text-blue-100">項目總覽</span>
-                        </div>
-                        <h2 className="text-[28px] sm:text-[32px] font-extrabold tracking-tight mb-2">項目管理</h2>
-                        <p className="text-[13px] sm:text-[14px] font-medium text-slate-300 max-w-xl leading-relaxed">
-                            追蹤所有裝修工程進度、工程狀態及跟進項目，確保每項工程如期進行。
-                        </p>
-                    </div>
-                    {userRole === 'admin' && (
-                        <button
-                            onClick={() => setShowCreateModal(true)}
-                            className="shrink-0 h-11 px-6 rounded-2xl bg-white text-[#1c2331] font-bold text-[13px] hover:bg-slate-100 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-sm flex items-center gap-2 self-start sm:self-center"
-                        >
-                            <Plus className="w-4 h-4" />
-                            新增項目
-                        </button>
-                    )}
+            <motion.div variants={fadeUp} className="relative overflow-hidden rounded-[24px] bg-[#000000] text-white p-8 sm:p-12 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <div>
+                    <h2 className="apple-display text-[40px] font-semibold tracking-tight leading-[1.10]">項目管理</h2>
+                    <p className="text-[17px] text-[#86868B] mt-2 max-w-xl">
+                        追蹤所有裝修工程進度、工程狀態及跟進項目，確保每項工程如期進行。
+                    </p>
                 </div>
+                {userRole === 'admin' && (
+                    <button
+                        onClick={() => setShowCreateModal(true)}
+                        className="shrink-0 h-[44px] px-[20px] rounded-[980px] bg-[#0071e3] hover:bg-[#0077ED] text-white text-[17px] font-normal flex items-center gap-2 transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] self-start sm:self-center"
+                    >
+                        新增項目
+                    </button>
+                )}
             </motion.div>
 
             {/* Stage Filter Pills */}
-            <motion.div variants={fadeUp} className="flex w-full max-w-full overflow-x-auto flex-nowrap gap-2.5 pt-2 pb-2 scrollbar-hide sm:flex-wrap">
+            <motion.div variants={fadeUp} className="flex w-full max-w-full overflow-x-auto flex-nowrap gap-2 pt-2 pb-4 scrollbar-hide sm:flex-wrap">
                 <button
                     onClick={() => setSelectedStage(null)}
-                    className={`shrink-0 px-4 py-2 rounded-xl text-[13px] font-bold transition-all shadow-sm ${!selectedStage ? 'bg-[#1D1D1F] text-white' : 'bg-white text-[#86868B] border border-[#E8E8ED] hover:bg-[#F5F5F7] hover:text-[#1D1D1F]'}`}
+                    className={`shrink-0 px-[14px] h-[32px] rounded-[11px] text-[14px] font-normal transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] ${!selectedStage ? 'bg-[#1D1D1F] text-white' : 'bg-[#fafafc] text-[rgba(0,0,0,0.8)] border border-[rgba(0,0,0,0.04)] hover:bg-[#E8E8ED]'}`}
                 >
-                    全部 <span className={!selectedStage ? 'opacity-80 ml-1.5 font-normal' : 'text-[#86868B] ml-1.5 font-normal'}>{viewableProjects.length}</span>
+                    全部 <span className={!selectedStage ? 'opacity-80 ml-1 font-normal' : 'text-[#86868B] ml-1 font-normal'}>{viewableProjects.length}</span>
                 </button>
                 {stageCounts.map(s => (
                     <button
                         key={s.name}
                         onClick={() => setSelectedStage(selectedStage === s.name ? null : s.name)}
-                        className={`shrink-0 px-4 py-2 rounded-xl text-[13px] font-bold transition-all flex items-center gap-2 shadow-sm ${selectedStage === s.name ? `bg-white ring-2 ring-current ring-inset ${s.text}` : 'bg-white text-[#86868B] border border-[#E8E8ED] hover:bg-[#F5F5F7] hover:text-[#1D1D1F]'}`}
+                        className={`shrink-0 px-[14px] h-[32px] rounded-[11px] text-[14px] font-normal transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] flex items-center gap-1.5 border ${selectedStage === s.name ? `bg-white border-[#0071e3] text-[#1D1D1F]` : 'bg-[#fafafc] border-[rgba(0,0,0,0.04)] text-[rgba(0,0,0,0.8)] hover:bg-[#E8E8ED]'}`}
                     >
                         <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                        {s.label} <span className="font-normal opacity-70">{s.count}</span>
+                        {s.label} <span className="font-normal opacity-70 ml-0.5">{s.count}</span>
                     </button>
                 ))}
             </motion.div>
@@ -318,26 +347,26 @@ export default function ProjectsPage() {
 
                             return (
                                 <motion.div key={project.id} layout initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.2 }}>
-                                    <div className="bg-white rounded-[24px] overflow-hidden border border-[#E8E8ED] shadow-[0_2px_20px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full">
+                                    <div className="bg-white rounded-[12px] overflow-hidden hover:shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] transition-all duration-300 group flex flex-col h-full border-none">
                                         <div className="p-6 flex-1 flex flex-col">
                                             {/* Top Row: Code & Actions */}
                                             <div className="flex items-start justify-between mb-5">
-                                                <div className="px-3 py-1 rounded-lg bg-[#F5F5F7] text-[11px] font-mono font-bold text-[#86868B] tracking-wider border border-[#E8E8ED]/70">
+                                                <div className="text-[12px] font-mono text-[#86868B] tracking-wider">
                                                     {project.projectCode}
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     {project.pendingStageRequest && (
-                                                        <div className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-600 flex items-center gap-1 shadow-sm border border-amber-100/50">
+                                                        <div className="px-2 py-0.5 rounded-[5px] text-[11px] font-medium bg-amber-50 text-amber-600 flex items-center gap-1">
                                                             <Clock className="w-3 h-3" /> 待審批
                                                         </div>
                                                     )}
-                                                    <div className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${stageStyle.bg} ${stageStyle.text}`}>
+                                                    <div className={`px-2 py-0.5 rounded-[5px] text-[11px] font-medium ${stageStyle.bg} ${stageStyle.text}`}>
                                                         {stageStyle.label}
                                                     </div>
                                                     {userRole === 'admin' && (
                                                         <button
                                                             onClick={(e) => handleDeleteProjectClick(e, project.id, project.clientName)}
-                                                            className="p-1 rounded-lg text-[#86868B] hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                            className="p-1 rounded-md text-[#86868B] hover:text-red-500 hover:bg-red-50 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3]"
                                                             title="刪除項目"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
@@ -348,10 +377,10 @@ export default function ProjectsPage() {
 
                                             {/* Title & Location */}
                                             <div className="mb-5">
-                                                <h3 className="text-[19px] font-bold text-[#1D1D1F] leading-snug mb-2 line-clamp-2">
+                                                <h3 className="apple-display text-[21px] font-bold text-[#1D1D1F] leading-[1.19] tracking-tight mb-2 line-clamp-2">
                                                     {project.clientName}
                                                     {project.status && project.status !== 'In Progress' && (
-                                                        <span className={`ml-2 inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md align-middle ${project.status === 'Signed' ? 'bg-emerald-50 text-emerald-600' : 'bg-[#F5F5F7] text-[#86868B]'}`}>
+                                                        <span className={`ml-2 inline-flex items-center gap-1 text-[12px] font-medium px-1.5 py-0.5 rounded-[5px] align-middle ${project.status === 'Signed' ? 'bg-emerald-50 text-emerald-600' : 'bg-[#F5F5F7] text-[#86868B]'}`}>
                                                             {project.status === 'Signed' ? '已簽單' : '未成交'}
                                                         </span>
                                                     )}
@@ -374,32 +403,70 @@ export default function ProjectsPage() {
                                                 </div>
                                             </div>
 
-                                            {/* Bottom Info Section (Grey box) */}
-                                            <div className="mt-6 p-4 bg-[#F5F5F7] rounded-[16px] space-y-2.5">
+                                            {/* Quick Download Links */}
+                                            {(() => {
+                                                const pFiles = (project as any).files || [];
+                                                const quotes = pFiles.filter((f: any) => f.type === 'quotation');
+                                                const drawings = pFiles.filter((f: any) => f.type === 'drawing');
+                                                const latestQuote = quotes.length > 0 ? quotes[quotes.length - 1] : null;
+                                                const latestDrawing = drawings.length > 0 ? drawings[drawings.length - 1] : null;
+
+                                                if (!latestQuote && !latestDrawing) return null;
+                                                
+                                                return (
+                                                    <div className="mt-4 flex flex-wrap gap-2">
+                                                        {latestQuote && (
+                                                            <a href={latestQuote.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-[11px] font-bold transition-colors border border-blue-100">
+                                                                <FileText className="w-3.5 h-3.5" />
+                                                                <span className="truncate max-w-[100px]">{latestQuote.name}</span>
+                                                            </a>
+                                                        )}
+                                                        {latestDrawing && (
+                                                            <a href={latestDrawing.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-[11px] font-bold transition-colors border border-emerald-100">
+                                                                <FileText className="w-3.5 h-3.5" />
+                                                                <span className="truncate max-w-[100px]">{latestDrawing.name}</span>
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            <div className="mt-6 p-5 bg-[#F5F5F7] rounded-[8px] space-y-3">
                                                 {['S01_客戶查詢', 'S02_見客前準備', 'S03_初步報價'].includes(project.stage) ? (
                                                     <>
                                                         <div className="flex justify-between items-center text-[12px]">
-                                                            <span className="text-[#86868B] font-semibold">預計面積</span>
-                                                            <span className="text-[#1D1D1F] font-bold">{project.area || '未提供'}</span>
+                                                            <span className="text-[rgba(0,0,0,0.8)] font-normal">預計面積</span>
+                                                            <span className="text-[#1D1D1F] font-semibold">{project.area || '未提供'}</span>
                                                         </div>
                                                         <div className="flex justify-between items-center text-[12px]">
-                                                            <span className="text-[#86868B] font-semibold">約見時間</span>
-                                                            <span className="text-[#1D1D1F] font-bold">{project.meetingDateTime ? new Date(project.meetingDateTime).toLocaleString('zh-HK', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '未定'}</span>
+                                                            <span className="text-[rgba(0,0,0,0.8)] font-normal">約見時間</span>
+                                                            <span className="text-[#1D1D1F] font-semibold">{project.meetingDateTime ? new Date(project.meetingDateTime).toLocaleString('zh-HK', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '未定'}</span>
                                                         </div>
                                                     </>
                                                 ) : (
                                                     <>
                                                         <div className="flex justify-between items-center text-[12px]">
-                                                            <span className="text-[#86868B] font-semibold leading-none">工程預算</span>
-                                                            <span className="text-[#1D1D1F] font-bold leading-none block pt-0.5">HK${(project.budget / 1000).toFixed(0)}k</span>
+                                                            <span className="text-[rgba(0,0,0,0.8)] font-normal leading-none">工程預算</span>
+                                                            <span className="text-[#1D1D1F] font-semibold leading-none block pt-0.5">HK${(project.budget / 10000).toFixed(1)}萬</span>
                                                         </div>
-                                                        <div className="flex justify-between items-center text-[12px] pt-1.5">
-                                                            <span className="text-[#86868B] font-semibold leading-none">總進度</span>
-                                                            <span className="text-[#1D1D1F] font-bold leading-none">{project.progress}%</span>
+                                                        <div className="flex justify-between items-center text-[12px] pt-1.5 flex-wrap gap-2">
+                                                            <span className="text-[rgba(0,0,0,0.8)] font-normal leading-none shrink-0">總進度</span>
+                                                            <div className="flex items-center gap-2">
+                                                                {getActiveTask(project) && (
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); router.push(`/projects/${project.id}?openProgress=true`); }}
+                                                                        className="inline-flex items-center gap-1 px-1.5 py-1 rounded-[6px] bg-blue-50 text-[#0071e3] hover:bg-blue-100/80 text-[10px] font-bold transition-colors border border-[#0071e3]/20"
+                                                                        title={`點擊直接更新（${getActiveTask(project)?.phaseLabel}）`}
+                                                                    >
+                                                                        ▶ 進行中: {getActiveTask(project)?.taskLabel}
+                                                                    </button>
+                                                                )}
+                                                                <span className="text-[#1D1D1F] font-semibold leading-none">{project.progress}%</span>
+                                                            </div>
                                                         </div>
-                                                        <div className="h-2 bg-[#E8E8ED] rounded-full overflow-hidden mt-1.5 border border-black/[0.02]">
+                                                        <div className="h-1.5 bg-[#E8E8ED] rounded-full overflow-hidden mt-2 border-none cursor-pointer" onClick={(e) => { e.stopPropagation(); router.push(`/projects/${project.id}?openProgress=true`); }}>
                                                             <motion.div
-                                                                className={`h-full rounded-full ${project.progress >= 90 ? 'bg-emerald-500' : project.progress >= 50 ? 'bg-[#0071E3]' : project.progress >= 25 ? 'bg-amber-400' : 'bg-[#86868B]'}`}
+                                                                className={`h-full rounded-full ${project.progress >= 90 ? 'bg-[#0071E3]' : project.progress >= 50 ? 'bg-[#0071E3]' : project.progress >= 25 ? 'bg-[#0071E3]' : 'bg-[#86868B]'}`}
                                                                 initial={{ width: 0 }}
                                                                 animate={{ width: `${project.progress}%` }}
                                                                 transition={{ duration: 0.8, delay: 0.2 }}
@@ -450,7 +517,7 @@ export default function ProjectsPage() {
                                 負責同事指派
                             </div>
                             <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-slate-500">負責同事 (PM/Designer)</label>
+                                <label className="text-xs font-semibold text-slate-500">負責同事 (Sales)</label>
                                 <div className="relative">
                                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                                     <Select value={formPm} onValueChange={setFormPm}>
@@ -465,7 +532,7 @@ export default function ProjectsPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <p className="text-[10px] text-slate-400 mt-1">狀態、簽約日期等資料可在建立後於「查看詳情」頁面編輯</p>
+                                <p className="text-[10px] text-slate-400 mt-1">S01 客戶查詢階段預設由「銷售部」跟進，PM 與設計師可於後續階段指派。</p>
                             </div>
                         </div>
 
@@ -526,9 +593,17 @@ export default function ProjectsPage() {
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-semibold text-slate-600">家庭成員結構 <span className="text-red-500">*</span></label>
-                                    <div className="relative">
-                                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                                        <Input value={formFamilyStructure} onChange={e => setFormFamilyStructure(e.target.value)} placeholder="2大人 2小孩" className="h-10 pl-9 bg-white" />
+                                    <div className="grid grid-cols-2 gap-2 mt-1">
+                                        {(Object.entries({ elder: '長者', adult: '大人', child: '小孩', helper: '工人' }) as [keyof typeof familyConfig, string][]).map(([k, label]) => (
+                                            <div key={k} className="flex items-center justify-between bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-200/60 rounded-xl px-3 py-1.5">
+                                                <span className="text-xs font-medium text-slate-600">{label}</span>
+                                                <div className="flex items-center gap-3">
+                                                    <button type="button" onClick={() => setFamilyConfig(prev => ({ ...prev, [k]: Math.max(0, prev[k] - 1) }))} className="text-slate-400 hover:text-slate-700 w-4 h-4 flex items-center justify-center font-medium bg-white rounded shadow-sm border border-slate-100">-</button>
+                                                    <span className="text-xs font-bold text-slate-700 w-2 text-center">{familyConfig[k]}</span>
+                                                    <button type="button" onClick={() => setFamilyConfig(prev => ({ ...prev, [k]: prev[k] + 1 }))} className="text-slate-400 hover:text-slate-700 w-4 h-4 flex items-center justify-center font-medium bg-white rounded shadow-sm border border-slate-100">+</button>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
@@ -546,47 +621,13 @@ export default function ProjectsPage() {
                                     <Input type="date" value={formStartDate} onChange={e => setFormStartDate(e.target.value)} className="h-10 bg-white" />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-600">預算 (HKD) <span className="text-red-500">*</span></label>
+                                    <label className="text-xs font-semibold text-slate-600">預算 (萬元) <span className="text-red-500">*</span></label>
                                     <div className="relative">
                                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                                        <Input type="number" value={formBudget} onChange={e => setFormBudget(e.target.value)} placeholder="450000" className="h-10 pl-9 bg-white" />
+                                        <Input type="number" value={formBudget} onChange={e => setFormBudget(e.target.value)} placeholder="45" className="h-10 pl-9 bg-white" />
                                     </div>
                                 </div>
                             </div>
-                        </div>
-
-                        {/* Section 5: 檔案上傳 */}
-                        <div className="bg-white rounded-[20px] border border-black/[0.04] p-5 shadow-sm space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                                    <Paperclip className="h-3.5 w-3.5" />
-                                    檔案上傳
-                                </div>
-                                <Button type="button" variant="ghost" size="sm" onClick={() => modalFileRef.current?.click()} disabled={uploadingModal} className="h-7 gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2">
-                                    {uploadingModal ? <Loader2 className="h-3 w-3 animate-spin" /> : <UploadCloud className="h-3 w-3" />} 上傳檔案
-                                </Button>
-                                <input ref={modalFileRef} type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={handleModalFileUpload} />
-                            </div>
-                            {modalFiles.length > 0 ? (
-                                <div className="space-y-2">
-                                    {modalFiles.map((f, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                                            <div className="flex items-center gap-2 text-xs font-medium text-slate-700 truncate">
-                                                <FileText className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                                <span className="truncate">{f.name}</span>
-                                            </div>
-                                            <button type="button" onClick={() => setModalFiles(prev => prev.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-red-500 transition-colors">
-                                                <X className="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg bg-slate-50/30">
-                                    <UploadCloud className="h-6 w-6 mx-auto text-slate-300 mb-2" />
-                                    <p className="text-[11px] text-slate-400 font-medium">點擊上方按鈕上傳報價單、圖則或其他檔案</p>
-                                </div>
-                            )}
                         </div>
 
                         {/* Footer */}

@@ -9,6 +9,14 @@ export interface SalesFollowUp {
     budgetOption?: boolean;
 }
 
+export interface Master {
+    id: string;
+    name: string;
+    skills: string[]; // 專業工種, e.g. ["泥水", "水電"]
+    phone?: string;
+    createdAt: string;
+}
+
 export interface BasePhase {
     startDate?: string;
     completionDate?: string;

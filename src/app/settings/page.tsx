@@ -51,13 +51,13 @@ export default function SettingsPage() {
     return (
         <motion.div className="max-w-4xl mx-auto space-y-7 pb-12" initial="hidden" animate="show" variants={container}>
             <motion.div variants={fadeUp}>
-                <h2 className="text-2xl font-bold tracking-tight text-[#1D1D1F]">系統設定</h2>
-                <p className="text-sm text-[#86868B] mt-1">管理個人資料與帳號安全</p>
+                <h2 className="apple-display text-[28px] sm:text-[32px] font-semibold tracking-tight text-[#1D1D1F]">系統設定</h2>
+                <p className="text-[14px] text-[#86868B] mt-1">管理個人資料與帳號安全</p>
             </motion.div>
 
-            <motion.div variants={fadeUp} className="space-y-5">
+            <motion.div variants={fadeUp} className="space-y-6">
                 {/* Profile */}
-                <Card>
+                <Card className="border-none shadow-[0_2px_20px_rgba(0,0,0,0.04)] rounded-[24px] bg-white overflow-hidden">
                     <CardHeader className="border-b border-[#E8E8ED]/60 bg-[#F5F5F7]/30 pb-4">
                         <CardTitle className="text-base flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg bg-[#0071E3]/10 flex items-center justify-center">
@@ -82,7 +82,7 @@ export default function SettingsPage() {
                 </Card>
 
                 {/* Security */}
-                <Card>
+                <Card className="border-none shadow-[0_2px_20px_rgba(0,0,0,0.04)] rounded-[24px] bg-white overflow-hidden">
                     <CardHeader className="border-b border-[#E8E8ED]/60 bg-[#F5F5F7]/30 pb-4">
                         <CardTitle className="text-base flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center">
@@ -127,7 +127,7 @@ export default function SettingsPage() {
                 </Card>
 
                 {/* About */}
-                <Card>
+                <Card className="border-none shadow-[0_2px_20px_rgba(0,0,0,0.04)] rounded-[24px] bg-white overflow-hidden">
                     <CardHeader className="border-b border-[#E8E8ED]/60 bg-[#F5F5F7]/30 pb-4">
                         <CardTitle className="text-base flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg bg-[#86868B]/10 flex items-center justify-center">

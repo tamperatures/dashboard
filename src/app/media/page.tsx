@@ -20,6 +20,7 @@ import {
     File,
     Download,
     Folder,
+    FileText,
 } from 'lucide-react';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/toast';
@@ -46,9 +47,9 @@ interface ProjectFile {
 export default function MediaPage() {
     const [folders, setFolders] = useState<ProjectFolder[]>([]);
     const [activeFolder, setActiveFolder] = useState<ProjectFolder | null>(null);
+    const [activeCategory, setActiveCategory] = useState<'photo' | 'quotation' | 'drawing' | 'other' | null>(null);
     const [previewFile, setPreviewFile] = useState<ProjectFile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [tab, setTab] = useState<'all' | 'photos' | 'docs'>('all');
     const { confirm, ConfirmDialogComponent } = useConfirmDialog();
     const toast = useToast();
 
@@ -124,10 +125,12 @@ export default function MediaPage() {
     const isImageFile = (file: ProjectFile) => file.type === 'photo';
 
     const getFilteredFiles = () => {
-        if (!activeFolder) return [];
-        if (tab === 'photos') return activeFolder.files.filter(f => f.type === 'photo');
-        if (tab === 'docs') return activeFolder.files.filter(f => f.type !== 'photo');
-        return activeFolder.files;
+        if (!activeFolder || !activeCategory) return [];
+        if (activeCategory === 'photo') return activeFolder.files.filter(f => f.type === 'photo');
+        if (activeCategory === 'quotation') return activeFolder.files.filter(f => f.type === 'quotation' || f.type === 'contract');
+        if (activeCategory === 'drawing') return activeFolder.files.filter(f => f.type === 'drawing');
+        if (activeCategory === 'other') return activeFolder.files.filter(f => f.type === 'other' || !['photo', 'quotation', 'contract', 'drawing'].includes(f.type));
+        return [];
     };
 
     const totalFiles = folders.reduce((sum, f) => sum + f.files.length, 0);
@@ -148,23 +151,26 @@ export default function MediaPage() {
                         {activeFolder ? (
                             <>
                                 <button
-                                    onClick={() => { setActiveFolder(null); setTab('all'); }}
-                                    className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium mb-2 transition-colors"
+                                    onClick={() => {
+                                        if (activeCategory) setActiveCategory(null);
+                                        else setActiveFolder(null);
+                                    }}
+                                    className="flex items-center gap-1.5 text-[14px] text-[#0071e3] hover:text-[#0077ED] font-medium mb-3 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] rounded-md px-1 -ml-1"
                                 >
-                                    <ChevronLeft className="w-4 h-4" /> 返回媒體庫
+                                    <ChevronLeft className="w-4 h-4" /> {activeCategory ? '返回資料夾層級' : '返回媒體庫'}
                                 </button>
-                                <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                <h1 className="apple-display text-[28px] sm:text-[32px] font-semibold text-[#1D1D1F] tracking-tight flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-[12px] bg-gradient-to-br from-[#0071e3] to-blue-600 flex items-center justify-center shadow-md shadow-[#0071e3]/20">
                                         <FolderOpen className="w-5 h-5 text-white" />
                                     </div>
                                     {activeFolder.projectCode} — {activeFolder.clientName}
                                 </h1>
-                                <p className="text-sm text-slate-400 mt-1">{activeFolder.estate} · {activeFolder.files.length} 個檔案</p>
+                                <p className="text-[14px] text-[#86868B] mt-1">{activeFolder.estate} · {activeFolder.files.length} 個檔案</p>
                             </>
                         ) : (
                             <>
-                                <h1 className="text-2xl font-bold text-slate-800 tracking-tight">媒體庫</h1>
-                                <p className="text-sm text-slate-400 mt-1">依專案分類管理所有文件與照片</p>
+                                <h1 className="apple-display text-[28px] sm:text-[32px] font-semibold text-[#1D1D1F] tracking-tight">媒體庫</h1>
+                                <p className="text-[14px] text-[#86868B] mt-1">依專案分類管理所有文件與照片</p>
                             </>
                         )}
                     </div>
@@ -202,11 +208,11 @@ export default function MediaPage() {
                                 return (
                                     <Card
                                         key={folder.id}
-                                        className="group cursor-pointer border-slate-200/60 hover:border-blue-300/60 hover:shadow-lg transition-all duration-300 overflow-hidden"
+                                        className="group cursor-pointer border-none shadow-[0_2px_20px_rgba(0,0,0,0.04)] rounded-[24px] hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] bg-white transition-all duration-300 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3]"
                                         onClick={() => setActiveFolder(folder)}
                                     >
                                         {/* Folder thumbnail or placeholder */}
-                                        <div className="aspect-[4/3] bg-slate-50 relative overflow-hidden">
+                                        <div className="aspect-[4/3] bg-[#F5F5F7] relative overflow-hidden">
                                             {thumb ? (
                                                 <img
                                                     src={thumb.url}
@@ -214,27 +220,27 @@ export default function MediaPage() {
                                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                                 />
                                             ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-                                                    <Folder className="w-12 h-12 text-slate-300" />
+                                                <div className="w-full h-full flex items-center justify-center bg-[#F5F5F7]">
+                                                    <Folder className="w-12 h-12 text-[#D1D1D6]" />
                                                 </div>
                                             )}
                                             {/* File count badges */}
-                                            <div className="absolute bottom-2 right-2 flex gap-1.5">
+                                            <div className="absolute bottom-3 right-3 flex gap-2">
                                                 {folder.photoCount > 0 && (
-                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600/80 text-white backdrop-blur-sm">
+                                                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-[8px] bg-black/60 text-white backdrop-blur-md">
                                                         📷 {folder.photoCount}
                                                     </span>
                                                 )}
                                                 {folder.docCount > 0 && (
-                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800/70 text-white backdrop-blur-sm">
+                                                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-[8px] bg-black/60 text-white backdrop-blur-md">
                                                         📄 {folder.docCount}
                                                     </span>
                                                 )}
                                             </div>
                                         </div>
-                                        <CardContent className="p-3">
-                                            <p className="text-sm font-bold text-slate-800 truncate">{folder.projectCode}</p>
-                                            <p className="text-xs text-slate-400 mt-0.5 truncate">{folder.clientName} · {folder.estate}</p>
+                                        <CardContent className="p-4">
+                                            <p className="text-[15px] font-semibold text-[#1D1D1F] truncate">{folder.projectCode}</p>
+                                            <p className="text-[13px] text-[#86868B] mt-0.5 truncate">{folder.clientName} · {folder.estate}</p>
                                         </CardContent>
                                     </Card>
                                 );
@@ -243,97 +249,112 @@ export default function MediaPage() {
                     )
                 ) : (
                     /* ─── Inside a Folder ─── */
-                    <>
-                        {/* Tab bar */}
-                        <div className="flex gap-2">
-                            {(['all', 'photos', 'docs'] as const).map(t => {
-                                const labels = { all: `全部 (${activeFolder.files.length})`, photos: `照片 (${activeFolder.photoCount})`, docs: `文件 (${activeFolder.docCount})` };
-                                return (
-                                    <button
-                                        key={t}
-                                        onClick={() => setTab(t)}
-                                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${tab === t
-                                            ? 'bg-slate-900 text-white shadow-sm'
-                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                            }`}
-                                    >
-                                        {labels[t]}
-                                    </button>
-                                );
-                            })}
+                    activeCategory === null ? (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                            {[
+                                { id: 'photo', name: '現場照片相簿', count: activeFolder.files.filter(f => f.type === 'photo').length, icon: <ImageIcon className="w-8 h-8 text-blue-500" /> },
+                                { id: 'quotation', name: '報價單與合約', count: activeFolder.files.filter(f => ['quotation', 'contract'].includes(f.type)).length, icon: <FileText className="w-8 h-8 text-emerald-500" /> },
+                                { id: 'drawing', name: '設計圖則', count: activeFolder.files.filter(f => f.type === 'drawing').length, icon: <FileText className="w-8 h-8 text-purple-500" /> },
+                                { id: 'other', name: '客戶來料與雜項', count: activeFolder.files.filter(f => !['photo', 'quotation', 'contract', 'drawing'].includes(f.type)).length, icon: <Folder className="w-8 h-8 text-slate-500" /> },
+                            ].map(cat => (
+                                <Card 
+                                    key={cat.id} 
+                                    className="cursor-pointer border-none shadow-[0_2px_20px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] bg-white transition-all duration-300 rounded-[24px] outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] group"
+                                    onClick={() => setActiveCategory(cat.id as any)}
+                                >
+                                    <CardContent className="p-6 flex flex-col items-center justify-center text-center gap-4 aspect-[4/3]">
+                                        <div className="w-16 h-16 rounded-[16px] bg-[#F5F5F7] flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                                            {cat.icon}
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold text-[#1D1D1F] tracking-wide">{cat.name}</h3>
+                                            <p className="text-xs text-[#86868B] mt-1">{cat.count} 個檔案</p>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
                         </div>
+                    ) : (
+                        <>
+                            {/* Tab bar replacement for breadcrumbs */}
+                            <div className="flex gap-2">
+                                {(<span className="px-4 py-2 rounded-[980px] text-[13px] font-medium bg-[#1D1D1F] text-white shadow-sm">
+                                    {activeCategory === 'photo' ? '現場照片相簿' : activeCategory === 'quotation' ? '報價單與合約' : activeCategory === 'drawing' ? '設計圖則' : '客戶來料與雜項'} ({getFilteredFiles().length})
+                                </span>)}
+                            </div>
 
-                        {getFilteredFiles().length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-20 text-center">
-                                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-                                    <ImageIcon className="w-8 h-8 text-slate-300" />
+                            {getFilteredFiles().length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-20 text-center">
+                                    <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                                        <ImageIcon className="w-8 h-8 text-slate-300" />
+                                    </div>
+                                    <h3 className="text-sm font-bold text-slate-400">此分類暫無檔案</h3>
                                 </div>
-                                <h3 className="text-sm font-bold text-slate-400">此分類暫無檔案</h3>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                                {getFilteredFiles().map((file) => (
-                                    isImageFile(file) ? (
-                                        /* Photo card */
-                                        <div
-                                            key={file.id}
-                                            className="group relative aspect-square rounded-xl overflow-hidden bg-slate-100 cursor-pointer border border-slate-200/60 hover:border-blue-300/60 shadow-sm hover:shadow-lg transition-all duration-300"
-                                            onClick={() => setPreviewFile(file)}
-                                        >
-                                            <img
-                                                src={file.url}
-                                                alt={file.name}
-                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                            />
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
-                                                <p className="text-white text-xs font-medium truncate">{file.name}</p>
-                                                <p className="text-white/60 text-[10px]">{formatSize(file.size)}</p>
-                                            </div>
-                                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1.5">
-                                                <div className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-md">
-                                                    <ZoomIn size={14} className="text-slate-700" />
+                            ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                                    {getFilteredFiles().map((file) => (
+                                        isImageFile(file) ? (
+                                            /* Photo card */
+                                            <div
+                                                key={file.id}
+                                                className="group relative aspect-square rounded-[24px] overflow-hidden bg-[#F5F5F7] cursor-pointer shadow-none hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all duration-300"
+                                                onClick={() => setPreviewFile(file)}
+                                            >
+                                                <img
+                                                    src={file.url}
+                                                    alt={file.name}
+                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                                />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
+                                                    <p className="text-white text-[13px] font-medium truncate">{file.name}</p>
+                                                    <p className="text-white/60 text-[11px]">{formatSize(file.size)}</p>
                                                 </div>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id, file.name); }}
-                                                    className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
-                                                >
-                                                    <Trash2 size={14} className="text-white" />
-                                                </button>
+                                                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                                    <div className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center shadow-lg">
+                                                        <ZoomIn size={14} className="text-[#1D1D1F]" />
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id, file.name); }}
+                                                        className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"
+                                                    >
+                                                        <Trash2 size={14} className="text-white" />
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ) : (
-                                        /* Document card */
-                                        <div
-                                            key={file.id}
-                                            className="group relative rounded-xl bg-white border border-slate-200/60 hover:border-blue-300/60 shadow-sm hover:shadow-lg transition-all duration-300 p-4 flex flex-col items-center justify-center text-center gap-3 aspect-square cursor-pointer"
-                                            onClick={() => window.open(file.url, '_blank')}
-                                        >
-                                            <div className="w-14 h-14 rounded-xl bg-blue-50 flex items-center justify-center border border-blue-100/50">
-                                                <File className="w-7 h-7 text-blue-500" />
+                                        ) : (
+                                            /* Document card */
+                                            <div
+                                                key={file.id}
+                                                className="group relative rounded-[24px] bg-white shadow-[0_2px_20px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 p-5 flex flex-col items-center justify-center text-center gap-3 aspect-square cursor-pointer"
+                                                onClick={() => window.open(file.url, '_blank')}
+                                            >
+                                                <div className="w-14 h-14 rounded-[12px] bg-[#E8E8ED] flex items-center justify-center">
+                                                    <File className="w-7 h-7 text-[#0071e3]" />
+                                                </div>
+                                                <div className="min-w-0 w-full">
+                                                    <p className="text-[13px] font-semibold text-[#1D1D1F] truncate">{file.name}</p>
+                                                    <p className="text-[11px] text-[#86868B] mt-1">
+                                                        {file.type === 'quotation' ? '報價單' : file.type === 'drawing' ? '圖則' : file.type === 'contract' ? '合約' : '文件'} · {formatSize(file.size)}
+                                                    </p>
+                                                </div>
+                                                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                                    <a href={file.url} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-full bg-[#F5F5F7] flex items-center justify-center hover:bg-[#E8E8ED] transition-colors" onClick={e => e.stopPropagation()}>
+                                                        <Download size={14} className="text-[#1D1D1F]" />
+                                                    </a>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id, file.name); }}
+                                                        className="w-8 h-8 rounded-full bg-[#F5F5F7] flex items-center justify-center hover:bg-red-100 hover:text-red-600 transition-colors"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div className="min-w-0 w-full">
-                                                <p className="text-xs font-semibold text-slate-700 truncate">{file.name}</p>
-                                                <p className="text-[10px] text-slate-400 mt-0.5">
-                                                    {file.type === 'quotation' ? '報價單' : file.type === 'drawing' ? '圖則' : file.type === 'contract' ? '合約' : '文件'} · {formatSize(file.size)}
-                                                </p>
-                                            </div>
-                                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1.5">
-                                                <a href={file.url} target="_blank" rel="noreferrer" className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors" onClick={e => e.stopPropagation()}>
-                                                    <Download size={12} className="text-slate-600" />
-                                                </a>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id, file.name); }}
-                                                    className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center hover:bg-red-100 hover:text-red-600 transition-colors"
-                                                >
-                                                    <Trash2 size={12} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )
-                                ))}
-                            </div>
-                        )}
-                    </>
+                                        )
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )
                 )}
 
                 {/* Full-screen Preview Dialog */}

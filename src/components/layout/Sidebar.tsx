@@ -16,8 +16,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 const NAV_ITEMS = [
     { href: '/', label: '工程總覽', icon: LayoutDashboard },
     { href: '/projects', label: '項目管理', icon: FolderKanban },
-    { href: '/crm', label: '客戶管理', icon: Users },
-    { href: '/calendar', label: '工程日程', icon: CalendarDays },
+    { href: '/calendar', label: '日程', icon: CalendarDays },
+    { href: '/schedule', label: '工程排程', icon: HardHat },
     { href: '/media', label: '文件資料', icon: FileText },
     { href: '/employees', label: '員工管理', icon: UserCog, adminOnly: true },
     { href: '/settings', label: '系統設定', icon: Settings },

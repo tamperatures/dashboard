@@ -289,8 +289,8 @@ export default function CalendarPage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-[#1D1D1F]">工程日程與任務</h2>
-                    <p className="text-sm text-[#86868B] mt-1">查看專案大綱、指派任務及即將到期的事項</p>
+                    <h2 className="apple-display text-[28px] sm:text-[32px] font-semibold tracking-tight text-[#1D1D1F]">日程與任務</h2>
+                    <p className="text-[14px] text-[#86868B] mt-1">查看專案大綱、指派任務及即將到期的事項</p>
                 </div>
                 <div className="flex items-center gap-3">
                     {/* Department Filter */}
@@ -324,9 +324,9 @@ export default function CalendarPage() {
                         </button>
                     </div>
                     {(userRole === 'admin' || userRole === 'staff') && (
-                        <Button onClick={() => setIsCreateModalOpen(true)} className="h-9 gap-2 text-sm font-semibold">
+                        <button onClick={() => setIsCreateModalOpen(true)} className="h-[40px] px-5 rounded-[980px] bg-[#0071e3] hover:bg-[#0077ED] text-white text-[15px] font-normal flex items-center gap-2 transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3]">
                             <Plus className="w-4 h-4" /> 新增排程
-                        </Button>
+                        </button>
                     )}
                 </div>
             </div>
@@ -345,20 +345,20 @@ export default function CalendarPage() {
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
 
                 {/* Left: Calendar Grid */}
-                <Card className="xl:col-span-3 shadow-sm border-slate-200/60 overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between pb-4 bg-slate-50/50 border-b border-slate-100/60 px-6">
+                <Card className="xl:col-span-3 border-none shadow-[0_2px_20px_rgba(0,0,0,0.04)] rounded-[24px] overflow-hidden bg-white">
+                    <CardHeader className="flex flex-row items-center justify-between pb-6 pt-6 px-8 bg-white border-b border-[#F5F5F7]">
                         <div className="flex items-center gap-3">
-                            <Calendar className="h-5 w-5 text-slate-600" />
-                            <CardTitle className="text-lg font-semibold text-slate-900">{monthLabel}</CardTitle>
+                            <Calendar className="h-5 w-5 text-[#86868B]" />
+                            <CardTitle className="apple-display text-[21px] font-semibold text-[#1D1D1F] tracking-tight">{monthLabel}</CardTitle>
                         </div>
-                        <div className="flex items-center gap-1">
-                            <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-colors">
+                        <div className="flex items-center gap-1.5">
+                            <button onClick={prevMonth} className="p-2 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3]">
                                 <ChevronLeft className="h-4 w-4" />
                             </button>
-                            <button onClick={goToday} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm transition-colors">
+                            <button onClick={goToday} className="px-3 py-1.5 rounded-[980px] text-[13px] font-semibold bg-white border border-[#E8E8ED] text-[#1D1D1F] hover:bg-[#F5F5F7] shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3]">
                                 回到今天
                             </button>
-                            <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-colors">
+                            <button onClick={nextMonth} className="p-2 rounded-full hover:bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3]">
                                 <ChevronRight className="h-4 w-4" />
                             </button>
                         </div>
@@ -417,13 +417,13 @@ export default function CalendarPage() {
                 {/* Right: Summary Panels */}
                 <div className="space-y-6">
                     {/* Selected Day Panel */}
-                    <Card className="shadow-sm border-slate-200/60 overflow-hidden">
-                        <CardHeader className="pb-4 bg-slate-50/50 border-b border-slate-100">
-                            <CardTitle className="text-sm font-bold text-slate-900">
+                    <Card className="border-none shadow-[0_2px_20px_rgba(0,0,0,0.04)] rounded-[24px] bg-white overflow-hidden">
+                        <CardHeader className="pb-5 pt-6 px-6 bg-white border-b border-[#F5F5F7]">
+                            <CardTitle className="apple-display text-[17px] font-semibold text-[#1D1D1F]">
                                 {selectedDay ? `${month + 1}月${selectedDay}日 詳情` : '選擇日期'}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="pt-4 px-4 bg-white">
+                        <CardContent className="pt-5 px-6 bg-white">
                             {selectedEvents.length > 0 ? (
                                 <div className="space-y-3">
                                     {selectedEvents.map((e, i) => {
@@ -467,11 +467,11 @@ export default function CalendarPage() {
                     </Card>
 
                     {/* Upcoming Panel */}
-                    <Card className="shadow-sm border-slate-200/60">
-                        <CardHeader className="pb-3 border-b border-slate-100">
-                            <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2"><Clock className="h-4 w-4 text-slate-400" /> 即將到來</CardTitle>
+                    <Card className="border-none shadow-[0_2px_20px_rgba(0,0,0,0.04)] rounded-[24px] bg-white">
+                        <CardHeader className="pb-5 pt-6 px-6 border-b border-[#F5F5F7]">
+                            <CardTitle className="apple-display text-[17px] font-semibold text-[#1D1D1F] flex items-center gap-2"><Clock className="h-4 w-4 text-[#86868B]" /> 即將到來</CardTitle>
                         </CardHeader>
-                        <CardContent className="pt-4 px-4 bg-white">
+                        <CardContent className="pt-5 px-6 bg-white">
                             {upcomingEvents.length > 0 ? (
                                 <div className="space-y-3">
                                     {upcomingEvents.map((e, i) => {

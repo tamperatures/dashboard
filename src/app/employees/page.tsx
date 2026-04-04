@@ -12,8 +12,9 @@ import {
 import {
     UserPlus, Users, Shield, ShieldCheck, Trash2,
     Edit, Loader2, AlertCircle, Search, Mail, Phone,
-    Lock, User, Briefcase, X, Filter,
+    Lock, User, Briefcase, X, Filter, HardHat
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { motion } from 'framer-motion';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/toast';
@@ -45,6 +46,7 @@ export default function EmployeesPage() {
     const userDept = userData?.department || '';
 
     const [employees, setEmployees] = useState<Employee[]>([]);
+    const [masters, setMasters] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [deptFilter, setDeptFilter] = useState('all');
@@ -65,16 +67,30 @@ export default function EmployeesPage() {
     const [formLoading, setFormLoading] = useState(false);
     const [formError, setFormError] = useState('');
 
+    // Master Form state
+    const [showMasterModal, setShowMasterModal] = useState(false);
+    const [masterName, setMasterName] = useState('');
+    const [masterPhone, setMasterPhone] = useState('');
+    const [masterSkills, setMasterSkills] = useState<string[]>([]);
+    
     useEffect(() => { fetchEmployees(); }, []);
 
     const fetchEmployees = async () => {
         try {
-            const res = await fetch('/api/employees?t=' + Date.now(), { cache: 'no-store' });
-            if (!res.ok) throw new Error('Failed');
-            const data = await res.json();
-            setEmployees(data.users || []);
+            const [empRes, masRes] = await Promise.all([
+                fetch('/api/employees?t=' + Date.now(), { cache: 'no-store' }),
+                fetch('/api/masters?t=' + Date.now(), { cache: 'no-store' })
+            ]);
+            if (empRes.ok) {
+                const data = await empRes.json();
+                setEmployees(data.users || []);
+            }
+            if (masRes.ok) {
+                const data = await masRes.json();
+                setMasters(data.masters || []);
+            }
         } catch {
-            setError('無法載入員工資料');
+            setError('無法載入資料');
         } finally {
             setLoading(false);
         }
@@ -149,6 +165,32 @@ export default function EmployeesPage() {
         }
     };
 
+    const openMasterModal = () => {
+        setMasterName('');
+        setMasterPhone('');
+        setMasterSkills([]);
+        setShowMasterModal(true);
+    };
+
+    const handleCreateMaster = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setFormLoading(true);
+        try {
+            const res = await fetch('/api/masters', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: masterName, phone: masterPhone, skills: masterSkills })
+            });
+            if (!res.ok) throw new Error('建立失敗');
+            setShowMasterModal(false);
+            fetchEmployees();
+        } catch (err: any) {
+            toast.error(err.message);
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
     const handleDelete = async (id: string) => {
         const confirmed = await confirm({
             title: '刪除員工',
@@ -195,8 +237,17 @@ export default function EmployeesPage() {
                     </Button>
                 </motion.div>
 
-                {/* Stats */}
-                <motion.div variants={fadeUp} className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                <Tabs defaultValue="employees" className="w-full">
+                    <div className="mb-6">
+                        <TabsList className="bg-slate-100/80 p-1.5 rounded-xl h-auto border border-slate-200/60 shadow-sm">
+                            <TabsTrigger value="employees" className="px-6 py-2.5 text-[14px] font-bold rounded-lg data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">內部系統員工</TabsTrigger>
+                            <TabsTrigger value="masters" className="px-6 py-2.5 text-[14px] font-bold rounded-lg data-[state=active]:bg-white data-[state=active]:text-amber-600 data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">外包資源 (師傅名單)</TabsTrigger>
+                        </TabsList>
+                    </div>
+
+                    <TabsContent value="employees" className="space-y-8 mt-0 outline-none">
+                        {/* Stats */}
+                        <motion.div variants={fadeUp} className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                     <Card className="shadow-sm border-slate-200/60">
                         <CardContent className="p-5 flex items-center gap-4">
                             <div className="p-3 rounded-xl bg-blue-50 text-blue-600"><Users className="h-5 w-5" /></div>
@@ -332,6 +383,64 @@ export default function EmployeesPage() {
                         </div>
                     </Card>
                 </motion.div>
+                </TabsContent>
+
+                <TabsContent value="masters" className="space-y-4 mt-0 outline-none">
+                    <Card className="shadow-sm border-slate-200/60 overflow-hidden">
+                        <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                            <div>
+                                <h3 className="font-bold text-slate-900">外包師傅名單</h3>
+                                <p className="text-[12px] text-slate-500 mt-1">用於日程派單，不具備系統登入權限</p>
+                            </div>
+                            {userRole === 'admin' && (
+                                <Button size="sm" onClick={openMasterModal} className="h-8 text-xs bg-slate-900 text-white hover:bg-slate-800">
+                                    <HardHat className="h-3.5 w-3.5 mr-1" /> 新增師傅
+                                </Button>
+                            )}
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-50/80 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th className="px-5 py-3.5">名稱</th>
+                                        <th className="px-4 py-3.5">工程專業</th>
+                                        <th className="px-4 py-3.5">電話</th>
+                                        <th className="px-4 py-3.5 text-right">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100/80">
+                                    {masters.length === 0 ? (
+                                        <tr><td colSpan={4} className="py-10 text-center text-sm text-slate-400">尚無外包師傅記錄</td></tr>
+                                    ) : masters.map(m => (
+                                        <tr key={m.id} className="hover:bg-slate-50/60 transaction-colors">
+                                            <td className="px-5 py-3.5 font-semibold text-slate-900">{m.name}</td>
+                                            <td className="px-4 py-3.5">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {m.skills?.map((s: string) => <span key={s} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700">{s}</span>)}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3.5 text-slate-600 text-sm">{m.phone || '—'}</td>
+                                            <td className="px-4 py-3.5 text-right">
+                                                {userRole === 'admin' && (
+                                                    <button onClick={async () => {
+                                                        const confirmed = await confirm({ title: '刪除師傅', description: '確定要刪除嗎？', variant: 'danger', confirmText: '刪除' });
+                                                        if (confirmed) {
+                                                            await fetch(`/api/masters/${m.id}`, { method: 'DELETE' });
+                                                            fetchEmployees();
+                                                        }
+                                                    }} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 transition-colors">
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+                </TabsContent>
+                </Tabs>
 
                 {/* Create/Edit Modal */}
                 <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
@@ -456,6 +565,52 @@ export default function EmployeesPage() {
                         </form>
                     </DialogContent>
                 </Dialog>
+
+                {/* Master Modal */}
+                <Dialog open={showMasterModal} onOpenChange={setShowMasterModal}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle className="text-lg font-bold">新增外包師傅</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={handleCreateMaster} className="space-y-4 px-6 pb-6">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-slate-500">師傅名稱 *</label>
+                                <Input value={masterName} onChange={e => setMasterName(e.target.value)} required placeholder="例如: 泥水陳師傅" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-slate-500">聯絡電話</label>
+                                <Input value={masterPhone} onChange={e => setMasterPhone(e.target.value)} placeholder="例如: 9000 0000" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold text-slate-500">工程專業 (多選)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {['清拆', '泥水', '水電', '木工', '油漆', '冷氣'].map(skill => {
+                                        const isChecked = masterSkills.includes(skill);
+                                        return (
+                                            <button
+                                                key={skill} type="button"
+                                                onClick={() => {
+                                                    if (isChecked) setMasterSkills(masterSkills.filter(s => s !== skill));
+                                                    else setMasterSkills([...masterSkills, skill]);
+                                                }}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isChecked ? 'bg-amber-100 border-amber-200 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                                            >
+                                                {isChecked ? '✓ ' : ''}{skill}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3 pt-4">
+                                <Button type="button" variant="outline" onClick={() => setShowMasterModal(false)}>取消</Button>
+                                <Button type="submit" disabled={formLoading} className="bg-amber-600 hover:bg-amber-700">
+                                    {formLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '儲存師傅'}
+                                </Button>
+                            </div>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+
             </motion.div>
             {ConfirmDialogComponent}
         </>
