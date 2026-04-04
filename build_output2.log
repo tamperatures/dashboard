@@ -1,0 +1,64 @@
+
+> renovation-management-next@0.1.0 build C:\Users\johnny\Downloads\tpt-renovation-management
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.5s
+  Running TypeScript ...
+  Collecting page data using 31 workers ...
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+  Generating static pages using 31 workers (0/15) ...
+Firebase Admin Initialized successfully.
+  Generating static pages using 31 workers (3/15) 
+  Generating static pages using 31 workers (7/15) 
+  Generating static pages using 31 workers (11/15) 
+✓ Generating static pages using 31 workers (15/15) in 980.1ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/me
+├ ƒ /api/debug/users
+├ ƒ /api/employees
+├ ƒ /api/employees/[id]
+├ ƒ /api/masters
+├ ƒ /api/masters/[id]
+├ ƒ /api/media/[...key]
+├ ƒ /api/media/list
+├ ƒ /api/media/upload
+├ ƒ /api/projects
+├ ƒ /api/projects/[id]
+├ ƒ /api/tasks
+├ ƒ /api/tasks/[id]
+├ ○ /calendar
+├ ○ /change-password
+├ ○ /employees
+├ ○ /login
+├ ○ /media
+├ ○ /projects
+├ ƒ /projects/[id]
+├ ○ /schedule
+└ ○ /settings
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

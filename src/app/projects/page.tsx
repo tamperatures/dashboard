@@ -97,6 +97,14 @@ const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { st
 const fadeUp = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 260, damping: 20 } } };
 
 export default function ProjectsPage() {
+    return (
+        <React.Suspense fallback={<div className="flex h-screen items-center justify-center bg-[#F5F5F7]"><Loader2 className="w-8 h-8 animate-spin text-[#0071E3]" /></div>}>
+            <ProjectsPageContent />
+        </React.Suspense>
+    );
+}
+
+function ProjectsPageContent() {
     const router = useRouter();
     const { user, userData } = useAuth();
     const userRole = userData?.role || 'staff';

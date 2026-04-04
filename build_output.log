@@ -1,0 +1,42 @@
+
+> renovation-management-next@0.1.0 build C:\Users\johnny\Downloads\tpt-renovation-management
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.5s
+  Running TypeScript ...
+  Collecting page data using 31 workers ...
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+Firebase Admin Initialized successfully.
+  Generating static pages using 31 workers (0/15) ...
+Firebase Admin Initialized successfully.
+  Generating static pages using 31 workers (3/15) 
+  Generating static pages using 31 workers (7/15) 
+⨯ useSearchParams() should be wrapped in a suspense boundary at page "/projects". Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+    at Q (C:\Users\johnny\Downloads\tpt-renovation-management\.next\server\chunks\ssr\node_modules__pnpm_ca4798fd._.js:2:2111)
+    at o (C:\Users\johnny\Downloads\tpt-renovation-management\.next\server\chunks\ssr\node_modules__pnpm_ca4798fd._.js:4:5284)
+    at G (C:\Users\johnny\Downloads\tpt-renovation-management\.next\server\chunks\ssr\src_app_projects_page_tsx_346ec2eb._.js:1:4178)
+    at an (C:\Users\johnny\Downloads\tpt-renovation-management\node_modules\.pnpm\next@16.1.6_@babel+core@7.2_c2cec45f76ad121dfaa1cf91738f8445\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:84360)
+    at ai (C:\Users\johnny\Downloads\tpt-renovation-management\node_modules\.pnpm\next@16.1.6_@babel+core@7.2_c2cec45f76ad121dfaa1cf91738f8445\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:86179)
+    at al (C:\Users\johnny\Downloads\tpt-renovation-management\node_modules\.pnpm\next@16.1.6_@babel+core@7.2_c2cec45f76ad121dfaa1cf91738f8445\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:107953)
+    at as (C:\Users\johnny\Downloads\tpt-renovation-management\node_modules\.pnpm\next@16.1.6_@babel+core@7.2_c2cec45f76ad121dfaa1cf91738f8445\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:105368)
+    at aa (C:\Users\johnny\Downloads\tpt-renovation-management\node_modules\.pnpm\next@16.1.6_@babel+core@7.2_c2cec45f76ad121dfaa1cf91738f8445\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:84712)
+    at ai (C:\Users\johnny\Downloads\tpt-renovation-management\node_modules\.pnpm\next@16.1.6_@babel+core@7.2_c2cec45f76ad121dfaa1cf91738f8445\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:86228)
+    at ai (C:\Users\johnny\Downloads\tpt-renovation-management\node_modules\.pnpm\next@16.1.6_@babel+core@7.2_c2cec45f76ad121dfaa1cf91738f8445\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:104708)
+Error occurred prerendering page "/projects". Read more: https://nextjs.org/docs/messages/prerender-error
+Export encountered an error on /projects/page: /projects, exiting the build.
+⨯ Next.js build worker exited with code: 1 and signal: null
+ ELIFECYCLE  Command failed with exit code 1.
