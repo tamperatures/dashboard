@@ -9,6 +9,17 @@ export interface SalesFollowUp {
     budgetOption?: boolean;
 }
 
+export interface GanttPhase {
+    id: string; // unique ID
+    key: string; // references standard keys like 'phase2Demolition' or custom generated keys
+    name: string; // e.g. "打拆工程"
+    duration: number; // working days
+    isIncluded: boolean;
+    manualStartDate?: string; // override start date
+    calculatedStartDate?: string; // auto calculated start date
+    calculatedEndDate?: string; // auto calculated end date
+}
+
 export interface Master {
     id: string;
     name: string;
@@ -139,6 +150,7 @@ export interface Customer {
     phase8OfficialInspection?: Phase8OfficialInspection;
     phase9Handover?: Phase9Handover;
     phase10Maintenance?: Phase10Maintenance;
+    ganttTimeline?: GanttPhase[];
     responsiblePerson?: string;
     salesFollowUp?: SalesFollowUp;
     images?: string[];

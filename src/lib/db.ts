@@ -26,9 +26,9 @@ export type ProjectStage =
     | 'S03_初步報價'
     | 'S04_見客後跟進'
     | 'S05_後續會面'
-    | 'S06_工程啟動'
-    | 'S07_工程進行中'
-    | 'S08_工程完成';
+    | 'P06_工程啟動'
+    | 'P07_工程進行中'
+    | 'P08_工程完成';
 
 export const ALL_STAGES: { key: ProjectStage; label: string; dept: string }[] = [
     { key: 'S01_客戶查詢', label: 'S01 客戶查詢', dept: '推廣部' },
@@ -36,9 +36,9 @@ export const ALL_STAGES: { key: ProjectStage; label: string; dept: string }[] = 
     { key: 'S03_初步報價', label: 'S03 初步報價', dept: '銷售部' },
     { key: 'S04_見客後跟進', label: 'S04 見客後跟進', dept: '設計部' },
     { key: 'S05_後續會面', label: 'S05 後續會面', dept: '銷售部' },
-    { key: 'S06_工程啟動', label: 'S06 簽單/工程啟動', dept: '工程部' },
-    { key: 'S07_工程進行中', label: 'S07 工程進行中', dept: '工程部' },
-    { key: 'S08_工程完成', label: 'S08 工程完成', dept: '—' },
+    { key: 'P06_工程啟動', label: 'P06 簽單/工程啟動', dept: '工程部' },
+    { key: 'P07_工程進行中', label: 'P07 工程進行中', dept: '工程部' },
+    { key: 'P08_工程完成', label: 'P08 工程完成', dept: '—' },
 ];
 
 export interface Project {

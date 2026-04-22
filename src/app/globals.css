@@ -74,3 +74,22 @@
     }
   }
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-timeline, #printable-timeline * {
+    visibility: visible;
+  }
+  #printable-timeline {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100vw;
+  }
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+}

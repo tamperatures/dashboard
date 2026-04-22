@@ -14,12 +14,15 @@ import {
     MapPin, User, Clock, ChevronLeft, ChevronDown, Calendar as CalIcon,
     Wallet, HardHat, FileText, UploadCloud, File, Image as ImageIcon,
     Download, Trash2, CheckCircle2, Circle, Loader2, Link as LinkIcon,
-    Save, Plus, Users, X, AlertCircle, Paperclip, Inbox
+    Save, Plus, Users, X, AlertCircle, Paperclip, Inbox, Edit2, Printer
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/toast';
-import { addWorkingDays, formatGanttDate } from '@/lib/dateUtils';
+import { formatGanttDate } from '@/lib/dateUtils';
+import { CONSTRUCTION_PHASES } from '@/lib/constants';
+import { GanttTimelineEditor } from '@/components/GanttTimelineEditor';
+import { AdvancedGanttChart } from '@/components/AdvancedGanttChart';
 
 const ALL_PHASES = [
     { key: 'S01_客戶查詢', label: 'S01 客戶查詢', dept: '推廣部' },
@@ -27,99 +30,23 @@ const ALL_PHASES = [
     { key: 'S03_初步報價', label: 'S03 初步報價', dept: '銷售部' },
     { key: 'S04_見客後跟進', label: 'S04 見客後跟進', dept: '設計部' },
     { key: 'S05_後續會面', label: 'S05 後續會面', dept: '銷售部' },
-    { key: 'S06_工程啟動', label: 'S06 工程啟動', dept: '工程部' },
-    { key: 'S07_工程進行中', label: 'S07 工程進行中', dept: '工程部' },
-    { key: 'S08_工程完成', label: 'S08 工程完成', dept: '工程部' }
+    { key: 'P06_工程啟動', label: 'P06 工程啟動', dept: '工程部' },
+    { key: 'P07_工程進行中', label: 'P07 工程進行中', dept: '工程部' },
+    { key: 'P08_工程完成', label: 'P08 工程完成', dept: '工程部' }
 ];
 
 // Stage → visible widget mapping (Cumulative to carry data forward)
 const STAGE_WIDGETS: Record<string, string[]> = {
     'S01_客戶查詢': ['overview', 'meetings', 'notes'],
     'S02_見客前準備': ['overview', 'design_links', 'meetings', 'notes'],
-    'S03_初步報價': ['overview', 'design_links', 'status', 'meetings', 'notes'],
+    'S03_初步報價': ['overview', 'quote_upload', 'design_links', 'status', 'meetings', 'notes'],
     'S04_見客後跟進': ['overview', 'design_links', 'status', 'meetings', 'notes'],
     'S05_後續會面': ['overview', 'design_links', 'status', 'meetings', 'notes'],
-    'S06_工程啟動': ['overview', 'design_links', 'status', 'construction_team', 'construction_progress', 'meetings', 'notes'],
-    'S07_工程進行中': ['overview', 'design_links', 'status', 'construction_team', 'construction_progress', 'meetings', 'notes'],
-    'S08_工程完成': ['overview', 'design_links', 'status', 'construction_team', 'construction_progress', 'meetings', 'notes'],
+    'P06_工程啟動': ['overview', 'design_links', 'construction_team', 'notes'],
+    'P07_工程進行中': ['overview', 'design_links', 'construction_team', 'construction_progress', 'notes'],
+    'P08_工程完成': ['overview', 'design_links', 'construction_team', 'construction_progress', 'notes'],
 };
 
-// 工程進度 — 10 construction phases with sub-tasks
-const CONSTRUCTION_PHASES = [
-    {
-        key: 'phase1SitePrep', icon: '☑️', label: '1. 工地準備', fields: [
-            { key: 'adminApplication', label: '入則申請' },
-            { key: 'insurance', label: '保險' },
-            { key: 'tempUtilities', label: '臨時水電' },
-            { key: 'publicProtection', label: '公眾保護' },
-            { key: 'itemProtection', label: '物品保護' },
-        ]
-    },
-    {
-        key: 'phase2Demolition', icon: '🗑️', label: '2. 清拆及廢物處理', fields: [
-            { key: 'survey', label: '勘查' },
-            { key: 'execution', label: '清拆執行' },
-            { key: 'noiseControl', label: '噪音控制' },
-            { key: 'wasteDisposal', label: '廢物處理' },
-        ]
-    },
-    {
-        key: 'phase3Plumbing', icon: '⚡', label: '3. 間隔及水電煤工程 (基建)', fields: [
-            { key: 'brickwork', label: '砌磚工程' },
-            { key: 'trenching', label: '開坑佈線' },
-            { key: 'positioning', label: '定位安裝' },
-            { key: 'gasWork', label: '煤氣工程' },
-        ]
-    },
-    {
-        key: 'phase4Masonry', icon: '🧱', label: '4. 泥水及防水工程', fields: [
-            { key: 'plastering', label: '批盪' },
-            { key: 'waterproofing', label: '防水工程' },
-            { key: 'tiling', label: '鋪磚' },
-            { key: 'leveling', label: '找平' },
-        ]
-    },
-    {
-        key: 'phase5Carpentry', icon: '🔧', label: '5. 木工及油漆工程', fields: [
-            { key: 'ceilingFeature', label: '天花造型' },
-            { key: 'wallPreparation', label: '牆身處理' },
-            { key: 'woodworkPainting', label: '木工油漆' },
-        ]
-    },
-    {
-        key: 'phase6Installation', icon: '🔩', label: '6. 後期安裝及裝嵌', fields: [
-            { key: 'furnitureAssembly', label: '傢俬組裝' },
-            { key: 'doorFloor', label: '門/地板安裝' },
-            { key: 'fixtures', label: '燈具潔具' },
-        ]
-    },
-    {
-        key: 'phase7PreInspection', icon: '📋', label: '7. 內部預驗收及清潔', fields: [
-            { key: 'internalCheck', label: '內部檢查' },
-            { key: 'defectFix', label: '缺陷修復' },
-            { key: 'basicCleaning', label: '基本清潔' },
-        ]
-    },
-    {
-        key: 'phase8OfficialInspection', icon: '👥', label: '8. 正式客戶驗收 (交場) 及執漏', fields: [
-            { key: 'jointInspection', label: '聯合驗收' },
-            { key: 'defectList', label: '缺陷清單' },
-            { key: 'rectification', label: '執漏修正' },
-        ]
-    },
-    {
-        key: 'phase9Handover', icon: '💰', label: '9. 結算尾款及文件交接', fields: [
-            { key: 'finalSettlement', label: '尾款結算' },
-            { key: 'docHandover', label: '文件交接' },
-        ]
-    },
-    {
-        key: 'phase10Maintenance', icon: '🛡️', label: '10. 提供保養期服務', fields: [
-            { key: 'warrantyPeriod', label: '保養期' },
-            { key: 'maintenanceRecord', label: '維修記錄' },
-        ]
-    },
-];
 
 const STAGE_HINTS: Record<string, string> = {
     'S01_客戶查詢': '收集客戶基本資料、安排約見',
@@ -127,10 +54,16 @@ const STAGE_HINTS: Record<string, string> = {
     'S03_初步報價': '提供初步報價、安排下次約見',
     'S04_見客後跟進': '修改設計圖、更新 3D 模型',
     'S05_後續會面': '跟進簽單、更新報價',
-    'S06_工程啟動': '確認合約、啟動工程',
-    'S07_工程進行中': '工程管理、進度追蹤',
-    'S08_工程完成': '驗收、完工確認',
+    'P06_工程啟動': '確認合約、啟動工程',
+    'P07_工程進行中': '工程管理、進度追蹤',
+    'P08_工程完成': '驗收、完工確認',
 };
+
+const TIME_OPTIONS = Array.from({ length: 24 * 2 }).map((_, i) => {
+    const hh = String(Math.floor(i / 2)).padStart(2, '0');
+    const mm = i % 2 === 0 ? '00' : '30';
+    return `${hh}:${mm}`;
+});
 
 export default function ProjectDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -149,14 +82,20 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     const toast = useToast();
 
     const [uploading, setUploading] = useState(false);
+    const [forcedFileType, setForcedFileType] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const photoInputRef = useRef<HTMLInputElement>(null);
+
+    // Gantt Editor State
+    const [isEditGanttOpen, setIsEditGanttOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState('overview');
 
     const [floorPlanLink, setFloorPlanLink] = useState('');
     const [sketchUpLink, setSketchUpLink] = useState('');
     // Dynamic meetings
-    interface MeetingEntry { dateTime: string; location: string; }
+    interface MeetingEntry { dateTime: string; location: string; createdByDept?: string; }
     const [meetings, setMeetings] = useState<MeetingEntry[]>([]);
+    const [newMeeting, setNewMeeting] = useState<MeetingEntry>({ dateTime: '', location: '', createdByDept: '' });
     const [notes, setNotes] = useState('');
     const [savingDetails, setSavingDetails] = useState(false);
     // 工程進度 accordion state
@@ -164,7 +103,42 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     const [expandedStageLogs, setExpandedStageLogs] = useState<Record<string, boolean>>({});
 
     const [isAddMeetingOpen, setIsAddMeetingOpen] = useState(false);
-    const [newMeeting, setNewMeeting] = useState({ dateTime: '', location: '' });
+    const [tradeFilter, setTradeFilter] = useState<string>('all');
+
+    const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
+    const [editForm, setEditForm] = useState({ budget: 0, area: 0, clientName: '', propertyType: '', renovationType: '', startDate: '' });
+    const [savingEdit, setSavingEdit] = useState(false);
+
+    const openEditProject = () => {
+        setEditForm({
+            budget: project?.budget || 0,
+            area: project?.area || 0,
+            clientName: project?.clientName || '',
+            propertyType: project?.propertyType || '',
+            renovationType: project?.renovationType || '',
+            startDate: project?.startDate || '',
+        });
+        setIsEditProjectOpen(true);
+    };
+
+    const handleSaveEditProject = async () => {
+        setSavingEdit(true);
+        try {
+            const res = await fetch(`/api/projects/${projectId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editForm)
+            });
+            if (!res.ok) throw new Error('儲存失敗');
+            toast.success('項目資料已更新');
+            setIsEditProjectOpen(false);
+            fetchProject();
+        } catch (err: any) {
+            toast.error(err.message || '儲存失敗');
+        } finally {
+            setSavingEdit(false);
+        }
+    };
 
     // Progress Modal State
     const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
@@ -259,7 +233,8 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             if (data.project.meetings && data.project.meetings.length > 0) {
                 setMeetings(data.project.meetings.map((m: any) => ({
                     dateTime: toLocalDatetimeString(m.dateTime),
-                    location: m.location || ''
+                    location: m.location || '',
+                    createdByDept: m.createdByDept || ''
                 })));
             } else if (data.project.meetingDateTime) {
                 setMeetings([{
@@ -309,7 +284,8 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             return;
         }
 
-        const updatedMeetings = [...meetings, newMeeting];
+        const meetingToSave = { ...newMeeting, createdByDept: userDepts[0] || '' };
+        const updatedMeetings = [...meetings, meetingToSave];
         setMeetings(updatedMeetings);
         setSavingDetails(true);
         try {
@@ -321,7 +297,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             if (res.ok) {
                 toast.success('已新增約見記錄');
                 setIsAddMeetingOpen(false);
-                setNewMeeting({ dateTime: '', location: '' });
+                setNewMeeting({ dateTime: '', location: '', createdByDept: '' });
                 fetchProject();
             } else {
                 throw new Error();
@@ -363,6 +339,78 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
     const currentPhaseDept = ALL_PHASES.find(p => p.key === project?.stage)?.dept || '';
     const isCurrentStageEditable = userRole === 'admin' || userDepts.includes(currentPhaseDept);
+    
+    // Core Widget Permission Flags
+    const isDesignDept = userDepts.includes('設計部');
+    const isSalesMarketing = userDepts.includes('推廣部') || userDepts.includes('銷售部');
+    const canEditDesignLinks = userRole === 'admin' || isDesignDept;
+    const canEditMeetingsList = userRole === 'admin' || isSalesMarketing;
+    const canEditStatus = userRole === 'admin' || isSalesMarketing;
+    const canEditProjectOverview = userRole === 'admin' || isCurrentStageEditable || userDepts.includes('銷售部');
+
+
+    const currentStageIdx = ALL_PHASES.findIndex(p => p.key === project?.stage);
+    const currentPhase = ALL_PHASES[currentStageIdx];
+    const nextPhase = ALL_PHASES[currentStageIdx + 1];
+    const canFastTrack = isCurrentStageEditable && nextPhase && currentStageIdx < ALL_PHASES.length - 1;
+
+    // Clear unread indicator when user opens the project
+    useEffect(() => {
+        if (!project || !projectId || !userDepts.length) return;
+        const unread = project.unreadDepartments || [];
+        const matches = unread.filter((d: string) => userDepts.includes(d));
+        if (matches.length > 0) {
+            const newUnread = unread.filter((d: string) => !userDepts.includes(d));
+            fetch(`/api/projects/${projectId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ unreadDepartments: newUnread })
+            }).then(() => {
+                // Silently cleared in background
+                setProject({ ...project, unreadDepartments: newUnread });
+            }).catch(() => {});
+        }
+    }, [project?.unreadDepartments, projectId, userDepts]);
+
+    const fastTrackNextStage = async () => {
+        if (!canFastTrack) return;
+        const targetDept = nextPhase.dept;
+        
+        const confirmed = await confirm({
+            title: '推進至下一階段',
+            description: `確定要將專案交接並推進至「${nextPhase.label}」嗎？\n${targetDept !== '—' && currentPhase?.dept !== targetDept ? `\n接收部門「${targetDept}」將會收到新交接的紅點提示。` : ''}`,
+            confirmText: '確定推進',
+            variant: 'info'
+        });
+        if (!confirmed) return;
+
+        try {
+            const newProgress = Math.round(((currentStageIdx + 2) / ALL_PHASES.length) * 100);
+            const bodyPayload: any = { stage: nextPhase.key, progress: newProgress };
+            
+            // Add unread department marker if cross-department
+            if (targetDept !== '—' && currentPhase?.dept !== targetDept) {
+                const existingUnread = project.unreadDepartments || [];
+                if (!existingUnread.includes(targetDept)) {
+                    bodyPayload.unreadDepartments = [...existingUnread, targetDept];
+                }
+            }
+
+            const res = await fetch(`/api/projects/${projectId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bodyPayload)
+            });
+            if (res.ok) {
+                toast.success('專案已成功推進至下一階段');
+                fetchProject();
+            } else {
+                toast.error('操作失敗');
+            }
+        } catch (e) {
+            toast.error('操作發生錯誤');
+        }
+    };
 
     const updateStage = async (newStageKey: string) => {
         if (userRole !== 'admin' && userRole !== 'staff') return;
@@ -476,13 +524,27 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
         if (!isCurrentStageEditable && userRole !== 'admin') return;
         const phaseData = { ...(project[phaseKey] || {}) };
         phaseData[fieldKey] = !currentValue;
+        let newProgress = project.progress;
+        if (project.stage >= 'P06') {
+            let totalTasks = 0;
+            let doneTasks = 0;
+            const tempProject = { ...project, [phaseKey]: phaseData };
+            CONSTRUCTION_PHASES.forEach(phase => {
+                const pd = tempProject[phase.key] || {};
+                const adHoc = pd.adHocTasks || [];
+                totalTasks += phase.fields.length + adHoc.length;
+                doneTasks += phase.fields.filter(f => pd[f.key]).length + adHoc.filter((t: any) => t.completed).length;
+            });
+            if (totalTasks > 0) newProgress = Math.min(100, Math.round(75 + (doneTasks / totalTasks) * 25));
+        }
+
         // Optimistic update
-        setProject((prev: any) => ({ ...prev, [phaseKey]: phaseData }));
+        setProject((prev: any) => ({ ...prev, [phaseKey]: phaseData, progress: newProgress }));
         try {
             await fetch(`/api/projects/${projectId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [phaseKey]: phaseData })
+                body: JSON.stringify({ [phaseKey]: phaseData, progress: newProgress })
             });
         } catch {
             // revert on failure
@@ -522,15 +584,18 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             if (!r2Res.ok) throw new Error('上傳至 R2 失敗');
             const fileData = await r2Res.json();
 
-            let fileType = 'other';
+            let fileType = forcedFileType || 'other';
             let finalName = fileData.fileName;
-            if (file.type.startsWith('image/')) fileType = 'photo';
-            else if (file.type === 'application/pdf' || file.type === 'application/msword' || file.type.includes('officedocument')) {
-                const lowerName = file.name.toLowerCase();
-                if (lowerName.includes('報價') || lowerName.includes('quotation') || lowerName.includes('quote')) fileType = 'quotation';
-                else if (lowerName.includes('圖則') || lowerName.includes('drawing') || lowerName.includes('plan')) fileType = 'drawing';
-                else fileType = 'contract';
+            if (!forcedFileType) {
+                if (file.type.startsWith('image/')) fileType = 'photo';
+                else if (file.type === 'application/pdf' || file.type === 'application/msword' || file.type.includes('officedocument')) {
+                    const lowerName = file.name.toLowerCase();
+                    if (lowerName.includes('報價') || lowerName.includes('quotation') || lowerName.includes('quote')) fileType = 'quotation';
+                    else if (lowerName.includes('圖則') || lowerName.includes('drawing') || lowerName.includes('plan')) fileType = 'drawing';
+                    else fileType = 'contract';
+                }
             }
+
 
             if (fileType === 'quotation') {
                 const existingQuotes = project.files?.filter((f: any) => f.type === 'quotation') || [];
@@ -588,8 +653,8 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
     if (loading) return <div className="p-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-400" /></div>;
     if (!project) return null;
+    if (!project) return null;
 
-    const currentStageIdx = ALL_PHASES.findIndex(p => p.key === project.stage);
 
     return (
         <>
@@ -607,7 +672,12 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                 <div>
                                     <div className="flex items-center gap-3">
                                         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-none">{project.clientName}的{project.renovationType}</h1>
-                                        <Badge variant="outline" className="text-xs font-mono">
+                                        {canEditProjectOverview && (
+                                            <Button variant="ghost" size="icon" onClick={openEditProject} className="text-slate-400 hover:text-slate-700 h-8 w-8 hover:bg-slate-100 rounded-lg">
+                                                <Edit2 className="w-4 h-4" />
+                                            </Button>
+                                        )}
+                                        <Badge variant="outline" className="text-xs font-mono border-slate-200 text-slate-600 bg-white shadow-sm ml-2 px-2.5">
                                             {project.projectCode}
                                         </Badge>
                                         {project.status && project.status !== 'In Progress' && (
@@ -725,7 +795,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                     )}
 
                     {/* Tabs */}
-                    <Tabs defaultValue="overview" className="w-full">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="mb-8 bg-slate-100/80 p-1.5 rounded-xl h-auto border border-slate-200/60 shadow-sm">
                             <TabsTrigger value="overview" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">工作流程與資訊</TabsTrigger>
                             <TabsTrigger value="documents" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">文件與圖則</TabsTrigger>
@@ -739,9 +809,19 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
                                 {/* LEFT COLUMN: 8-Step Workflow Tracker (Strict Line Layout) */}
                                 <Card>
-                                    <CardHeader className="pl-6 pt-6 pb-3">
-                                        <CardTitle className="text-xl font-bold tracking-tight">工程進度追蹤 (S01 - S08)</CardTitle>
-                                        <CardDescription>點擊階段以更新項目狀態</CardDescription>
+                                    <CardHeader className="pl-6 pt-6 pb-3 flex flex-row items-center justify-between">
+                                        <div>
+                                            <CardTitle className="text-xl font-bold tracking-tight">工程進度追蹤 (S01 - S08)</CardTitle>
+                                            <CardDescription>點擊階段以更新項目狀態</CardDescription>
+                                        </div>
+                                        {canFastTrack && (
+                                            <Button 
+                                                onClick={fastTrackNextStage} 
+                                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm font-bold h-10 px-6 rounded-xl shrink-0"
+                                            >
+                                                推進至下一階段
+                                            </Button>
+                                        )}
                                     </CardHeader>
                                     <CardContent className="px-4 py-6 sm:px-10">
                                         <div className="relative border-l-2 border-slate-100 ml-7 space-y-6 pb-4">
@@ -944,7 +1024,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                     )}
 
                                     {/* Widget: 項目狀態 — S03, S05-S08 */}
-                                    {userRole === 'admin' && (STAGE_WIDGETS[project.stage] || []).includes('status') && (
+                                    {(STAGE_WIDGETS[project.stage] || []).includes('status') && (
                                         <Card>
                                             <CardHeader className="pb-3">
                                                 <CardTitle className="text-base font-bold flex items-center gap-2">
@@ -955,17 +1035,46 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                 <div className="space-y-2">
                                                     <label className="text-[11px] font-semibold text-slate-500 tracking-wide">目前狀態</label>
                                                     <Select
+                                                        disabled={!canEditStatus}
                                                         value={project.status || 'In Progress'}
                                                         onValueChange={async (val) => {
-                                                            await fetch(`/api/projects/${projectId}`, {
-                                                                method: 'PUT',
-                                                                headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ status: val })
+                                                            const isJumpingToP06 = val === 'Signed' && currentStageIdx < ALL_PHASES.findIndex(p => p.key === 'P06_工程啟動');
+                                                            const p06Phase = ALL_PHASES.find(p => p.key === 'P06_工程啟動');
+
+                                                            const confirmed = await confirm({
+                                                                title: '更改項目狀態',
+                                                                description: `確定要將項目狀態更改為「${val === 'Signed' ? '成功簽單' : val === 'Lost' ? '未能成交' : '進行中'}」嗎？${isJumpingToP06 ? '\n系統將會自動將專案推進至「P06 工程啟動」並移交給工程部！' : ''}`,
+                                                                confirmText: '確定更改',
+                                                                variant: 'warning'
                                                             });
-                                                            fetchProject();
+                                                            if (!confirmed) return;
+
+                                                            try {
+                                                                const bodyPayload: any = { status: val };
+
+                                                                if (isJumpingToP06 && p06Phase) {
+                                                                    bodyPayload.stage = p06Phase.key;
+                                                                    bodyPayload.progress = Math.round(((ALL_PHASES.findIndex(p => p.key === p06Phase.key) + 1) / ALL_PHASES.length) * 100);
+                                                                    
+                                                                    const existingUnread = project.unreadDepartments || [];
+                                                                    if (!existingUnread.includes(p06Phase.dept)) {
+                                                                        bodyPayload.unreadDepartments = [...existingUnread, p06Phase.dept];
+                                                                    }
+                                                                }
+
+                                                                await fetch(`/api/projects/${projectId}`, {
+                                                                    method: 'PUT',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify(bodyPayload)
+                                                                });
+                                                                toast.success(isJumpingToP06 ? '已更新狀態，並成功推進至 P06 工程階段' : '項目狀態已更新');
+                                                                fetchProject();
+                                                            } catch (e) {
+                                                                toast.error('更改狀態失敗');
+                                                            }
                                                         }}
                                                     >
-                                                        <SelectTrigger className={`h-10 text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-violet-500/20 ${!isCurrentStageEditable && userRole !== 'admin' ? 'pointer-events-none opacity-50' : ''}`}>
+                                                        <SelectTrigger className={`h-10 text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-violet-500/20`}>
                                                             <span className="truncate font-semibold text-slate-700">
                                                                 {(project.status || 'In Progress') === 'Signed' ? (
                                                                     <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-500" /> 成功簽單</span>
@@ -993,7 +1102,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                     <label className="text-[11px] font-semibold text-slate-500 tracking-wide">簽約日期</label>
                                                     <Input
                                                         type="date"
-                                                        disabled={!isCurrentStageEditable && userRole !== 'admin'}
+                                                        disabled={!canEditStatus}
                                                         defaultValue={project.contractDate || ''}
                                                         onBlur={async (e) => {
                                                             await fetch(`/api/projects/${projectId}`, {
@@ -1059,32 +1168,61 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                     {/* Widget: 工程進度 */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('construction_progress') && (
                                         <Card>
-                                            <CardHeader className="pb-3">
-                                                <CardTitle className="text-base font-bold flex items-center gap-2">
-                                                    <HardHat className="h-5 w-5 text-orange-500" /> 工程進度
-                                                </CardTitle>
-                                                <CardDescription>直接點擊展開各工序以勾選完成進度</CardDescription>
+                                            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                                                <div>
+                                                    <CardTitle className="text-base font-bold flex items-center gap-2">
+                                                        <HardHat className="h-5 w-5 text-orange-500" /> 工程進度 (Gantt)
+                                                    </CardTitle>
+                                                    <CardDescription className="mt-1">點擊展開工序打勾；點擊右上角編輯天數與順序</CardDescription>
+                                                </div>
+                                                {(isCurrentStageEditable || userRole === 'admin') && (
+                                                    <Button 
+                                                        variant="outline" size="sm" 
+                                                        onClick={() => {
+                                                            setActiveTab('timeline');
+                                                            // Scroll to top to ensure the tab is fully visible
+                                                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                        }}
+                                                        className="h-8 gap-1.5 text-xs font-bold text-orange-700 border-orange-200 bg-orange-50 hover:bg-orange-100"
+                                                    >
+                                                        <Clock className="w-3.5 h-3.5" /> 編輯工程排程
+                                                    </Button>
+                                                )}
                                             </CardHeader>
                                             <CardContent className="px-5 pt-3 pb-5">
                                                 <div className="space-y-3">
-                                                    {CONSTRUCTION_PHASES.map((phase) => {
+                                                    {(project?.ganttTimeline?.length > 0 
+                                                        ? project.ganttTimeline 
+                                                        : CONSTRUCTION_PHASES.map((p, idx) => ({ id: `default-${idx}`, key: p.key, name: p.label, duration: 5, isIncluded: true }))
+                                                    ).filter((p: any) => p.isIncluded).map((phase: any) => {
+                                                        const staticPhaseDef = CONSTRUCTION_PHASES.find(c => c.key === phase.key);
+                                                        const fields = staticPhaseDef ? staticPhaseDef.fields : [];
+                                                        const icon = staticPhaseDef ? staticPhaseDef.icon : '🚧';
+                                                        
                                                         const phaseData = project[phase.key] || {};
                                                         const adHocTasks = phaseData.adHocTasks || [];
-                                                        const doneCount = phase.fields.filter(f => phaseData[f.key] === true).length + adHocTasks.filter((t: any) => t.completed).length;
-                                                        const totalCount = phase.fields.length + adHocTasks.length;
+                                                        const doneCount = fields.filter((f: any) => phaseData[f.key] === true).length + adHocTasks.filter((t: any) => t.completed).length;
+                                                        const totalCount = fields.length + adHocTasks.length;
                                                         const allDone = totalCount > 0 && doneCount === totalCount;
                                                         const progressPercent = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
-                                                        const isExpanded = expandedPhases.includes(phase.key);
+                                                        const isExpanded = expandedPhases.includes(phase.id || phase.key);
 
                                                         return (
-                                                            <div key={phase.key} className="flex flex-col bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
+                                                            <div key={phase.id || phase.key} className="flex flex-col bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
                                                                 <button
-                                                                    onClick={() => setExpandedPhases(prev => prev.includes(phase.key) ? prev.filter(k => k !== phase.key) : [...prev, phase.key])}
+                                                                    onClick={() => setExpandedPhases(prev => prev.includes(phase.id || phase.key) ? prev.filter(k => k !== (phase.id || phase.key)) : [...prev, phase.id || phase.key])}
                                                                     className="flex items-center justify-between p-4 w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-blue-500 hover:bg-slate-100 transition-colors"
                                                                 >
-                                                                    <div className="flex items-center gap-2 min-w-0">
-                                                                        <span className="text-[16px] shrink-0">{phase.icon}</span>
-                                                                        <span className={`text-[14px] font-semibold tracking-tight ${allDone ? 'text-emerald-700' : 'text-slate-900'}`}>{phase.label}</span>
+                                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                        <span className="text-[16px] shrink-0">{icon}</span>
+                                                                        <div className="flex flex-col min-w-0">
+                                                                            <span className={`text-[14px] font-semibold tracking-tight truncate ${allDone ? 'text-emerald-700' : 'text-slate-900'}`}>{phase.name}</span>
+                                                                            {phase.calculatedStartDate && phase.calculatedEndDate && (
+                                                                                <span className="text-[10px] text-slate-500 font-medium mt-0.5">
+                                                                                    {formatGanttDate(phase.calculatedStartDate)} - {formatGanttDate(phase.calculatedEndDate)} ({phase.duration}天)
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                     <div className="flex items-center gap-2 shrink-0">
                                                                         <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-md ${allDone ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
@@ -1102,7 +1240,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                                 {isExpanded && (
                                                                     <div className="p-3 border-t border-slate-100 bg-white">
                                                                         <div className="space-y-2 mb-4">
-                                                                            {phase.fields.map((field) => (
+                                                                            {fields.map((field: any) => (
                                                                                 <label key={field.key} className="flex items-center gap-3 cursor-pointer group">
                                                                                     <input
                                                                                         type="checkbox"
@@ -1170,6 +1308,52 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                         </Card>
                                     )}
 
+                                    {/* Widget: S03 Preliminary Quote Upload */}
+                                    {(STAGE_WIDGETS[project.stage] || []).includes('quote_upload') && (
+                                        <Card className="border border-indigo-200 shadow-sm bg-indigo-50/30">
+                                            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                                                <CardTitle className="text-base font-bold flex items-center gap-2 text-indigo-700">
+                                                    <UploadCloud className="h-5 w-5 text-indigo-500" /> 報價單 / 企劃書上傳
+                                                </CardTitle>
+                                                {(isCurrentStageEditable || userRole === 'admin') && (
+                                                    <Button 
+                                                        size="sm" 
+                                                        className="h-8 gap-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm"
+                                                        onClick={() => { setForcedFileType('quotation'); fileInputRef.current?.click(); }}
+                                                        disabled={uploading}
+                                                    >
+                                                        {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} 上傳文件
+                                                    </Button>
+                                                )}
+                                            </CardHeader>
+                                            <CardContent className="px-6 pt-3 pb-6">
+                                                <p className="text-xs text-indigo-900/60 font-medium mb-3">請上傳 S03 階段的初步報價單或設計企劃書 (支援 PDF, Word, Excel)。上傳後會自動存入「文件檔案」頁籤。</p>
+                                                {project.files?.filter((f: any) => f.type === 'quotation').length > 0 ? (
+                                                    <div className="flex flex-col gap-2">
+                                                        {project.files.filter((f: any) => f.type === 'quotation').slice(0, 3).map((f: any) => (
+                                                            <div key={f.id} className="flex items-center gap-3 bg-white border border-indigo-100 p-2.5 rounded-lg shadow-sm">
+                                                                <FileText className="w-4 h-4 text-indigo-400" />
+                                                                <a href={f.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-indigo-800 hover:underline flex-1 truncate">
+                                                                    {f.name}
+                                                                </a>
+                                                                <span className="text-[10px] text-slate-400 font-mono">
+                                                                    {new Date(f.uploadDate).toLocaleDateString()}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                        {project.files.filter((f: any) => f.type === 'quotation').length > 3 && (
+                                                            <p className="text-[10px] text-indigo-500 font-semibold px-2">及更多文件... 請前往「文件與圖則」頁籤查看。</p>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-white/50 border border-dashed border-indigo-200 rounded-lg p-4 text-center">
+                                                        <p className="text-[12px] font-semibold text-indigo-400">尚無報價單紀錄</p>
+                                                    </div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
                                     {/* Widget: 約見記錄 — S01-S05 */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('meetings') && (
                                         <Card>
@@ -1178,7 +1362,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                     <Clock className="h-5 w-5 text-amber-500" /> 約見記錄
                                                 </CardTitle>
                                                 <div className="flex items-center gap-1">
-                                                    {(isCurrentStageEditable || userRole === 'admin') && (
+                                                    {canEditMeetingsList && (
                                                         <Button
                                                             variant="default" size="sm"
                                                             onClick={() => setIsAddMeetingOpen(true)}
@@ -1195,11 +1379,16 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                         <div className="text-center py-6 text-[13px] font-semibold text-slate-400 border border-dashed border-slate-200 bg-slate-50/50 rounded-2xl">
                                                             尚無約見記錄
                                                         </div>
-                                                    ) : meetings.map((m, idx) => (
+                                                    ) : meetings.map((m, idx) => {
+                                                        const isMeetingEditable = userRole === 'admin' || m.createdByDept === userDepts[0] || (!m.createdByDept && canEditMeetingsList);
+                                                        return (
                                                         <div key={idx} className="bg-slate-50 hover:bg-slate-100/50 transition-colors border-transparent rounded-2xl p-5 space-y-4">
                                                             <div className="flex items-center justify-between">
-                                                                <span className="text-[11px] font-semibold text-slate-500 tracking-wide">第 {idx + 1} 次約見{idx === 0 ? ' (初次)' : ''}</span>
-                                                                {meetings.length > 1 && (isCurrentStageEditable || userRole === 'admin') && (
+                                                                <span className="text-[11px] font-semibold text-slate-500 tracking-wide flex items-center gap-2">
+                                                                    第 {idx + 1} 次約見{idx === 0 ? ' (初次)' : ''}
+                                                                    {m.createdByDept && <Badge variant="outline" className="text-[9px] bg-white border-slate-200 py-0 text-slate-400">{m.createdByDept}</Badge>}
+                                                                </span>
+                                                                {meetings.length > 1 && isMeetingEditable && (
                                                                     <button
                                                                         onClick={() => handleDeleteMeeting(idx)}
                                                                         className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
@@ -1210,29 +1399,87 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                             </div>
                                                             <div className="space-y-2">
                                                                 <label className="text-[11px] font-semibold text-slate-500 tracking-wide">約定時間</label>
-                                                                <Input
-                                                                    type="datetime-local"
-                                                                    disabled={!isCurrentStageEditable && userRole !== 'admin'}
-                                                                    value={m.dateTime}
-                                                                    onChange={e => setMeetings(prev => prev.map((item, i) => i === idx ? { ...item, dateTime: e.target.value } : item))}
-                                                                    onBlur={handleSaveMeetingList}
-                                                                    className="h-10 text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-amber-500/20 disabled:opacity-50"
-                                                                />
+                                                                <div className="flex gap-2">
+                                                                    <Input
+                                                                        type="date"
+                                                                        disabled={!isMeetingEditable}
+                                                                        value={m.dateTime ? m.dateTime.split('T')[0] : ''}
+                                                                        onChange={e => {
+                                                                            const dateStr = e.target.value;
+                                                                            const timeStr = m.dateTime ? (m.dateTime.split('T')[1] || '09:00') : '09:00';
+                                                                            setMeetings(prev => prev.map((item, i) => i === idx ? { ...item, dateTime: `${dateStr}T${timeStr}` } : item));
+                                                                        }}
+                                                                        onBlur={handleSaveMeetingList}
+                                                                        className="h-10 w-full text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-amber-500/20 disabled:opacity-50"
+                                                                    />
+                                                                    <Select
+                                                                        disabled={!isMeetingEditable}
+                                                                        value={m.dateTime ? (m.dateTime.split('T')[1] || '09:00') : '09:00'}
+                                                                        onValueChange={(val) => {
+                                                                            const dateStr = m.dateTime ? (m.dateTime.split('T')[0] || '') : '';
+                                                                            setMeetings(prev => prev.map((item, i) => i === idx ? { ...item, dateTime: `${dateStr}T${val}` } : item));
+                                                                            setTimeout(handleSaveMeetingList, 50);
+                                                                        }}
+                                                                    >
+                                                                        <SelectTrigger className="h-10 w-[110px] text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-amber-500/20 disabled:opacity-50 outline-none">
+                                                                            <SelectValue placeholder="時間" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent className="max-h-[300px]">
+                                                                            {TIME_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
                                                             </div>
                                                             <div className="space-y-2">
                                                                 <label className="text-[11px] font-semibold text-slate-500 tracking-wide">見面地點</label>
-                                                                <Input
-                                                                    type="text"
-                                                                    disabled={!isCurrentStageEditable && userRole !== 'admin'}
-                                                                    value={m.location}
-                                                                    onChange={e => setMeetings(prev => prev.map((item, i) => i === idx ? { ...item, location: e.target.value } : item))}
-                                                                    onBlur={handleSaveMeetingList}
-                                                                    placeholder="例如: 荃灣海之戀 / 辦公室"
-                                                                    className="h-10 text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-amber-500/20 disabled:opacity-50"
-                                                                />
+                                                                <Select
+                                                                    disabled={!isMeetingEditable}
+                                                                    value={['地盤', '寫字樓', ''].includes(m.location) ? m.location : 'other'}
+                                                                    onValueChange={async (val) => {
+                                                                        const newLoc = val === 'other' ? '咖啡室/其他' : val;
+                                                                        const newMeetings = meetings.map((item, i) => i === idx ? { ...item, location: newLoc } : item);
+                                                                        setMeetings(newMeetings);
+                                                                        setSavingDetails(true);
+                                                                        try {
+                                                                            const meetingsPayload = newMeetings.map(mx => ({ dateTime: mx.dateTime ? new Date(mx.dateTime).toISOString() : '', location: mx.location }));
+                                                                            await fetch(`/api/projects/${projectId}`, {
+                                                                                method: 'PUT',
+                                                                                headers: { 'Content-Type': 'application/json' },
+                                                                                body: JSON.stringify({ meetings: meetingsPayload })
+                                                                            });
+                                                                            fetchProject();
+                                                                        } finally {
+                                                                            setSavingDetails(false);
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <SelectTrigger className="h-10 text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-amber-500/20 disabled:opacity-50">
+                                                                        <SelectValue placeholder="選擇地點" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="地盤">地盤</SelectItem>
+                                                                        <SelectItem value="寫字樓">寫字樓</SelectItem>
+                                                                        <SelectItem value="other">其他 (請註明)</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                                {!['地盤', '寫字樓', ''].includes(m.location) && (
+                                                                    <Input
+                                                                        type="text"
+                                                                        disabled={!isMeetingEditable}
+                                                                        placeholder="請輸入地點 (例如：Starbucks)"
+                                                                        value={m.location === '其他' || m.location === '咖啡室/其他' ? '' : m.location}
+                                                                        onChange={e => {
+                                                                            const newLoc = e.target.value || '咖啡室/其他';
+                                                                            setMeetings(prev => prev.map((item, i) => i === idx ? { ...item, location: newLoc } : item));
+                                                                        }}
+                                                                        onBlur={handleSaveMeetingList}
+                                                                        className="h-10 text-xs w-full bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-amber-500/20 disabled:opacity-50 mt-2 placeholder:text-slate-400"
+                                                                    />
+                                                                )}
                                                             </div>
                                                         </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                                 {project.googleFormLink && (
                                                     <a href={project.googleFormLink} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-semibold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 p-2.5 rounded-lg border border-blue-100/50 transition-colors mt-3">
@@ -1250,7 +1497,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                 <CardTitle className="text-base font-bold flex items-center gap-2">
                                                     <LinkIcon className="h-5 w-5 text-blue-500" /> 設計連結
                                                 </CardTitle>
-                                                {(isCurrentStageEditable || userRole === 'admin') && (
+                                                {canEditDesignLinks && (
                                                     <Button variant="ghost" size="icon" onClick={saveDetails} disabled={savingDetails} className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md">
                                                         {savingDetails ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-4 w-4" />}
                                                     </Button>
@@ -1260,7 +1507,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                 <div className="space-y-2">
                                                     <label className="text-[11px] font-semibold text-slate-500 tracking-wide">平面圖連結</label>
                                                     <Input
-                                                        disabled={!isCurrentStageEditable && userRole !== 'admin'}
+                                                        disabled={!canEditDesignLinks}
                                                         value={floorPlanLink}
                                                         onChange={e => setFloorPlanLink(e.target.value)}
                                                         placeholder="https://drive.google.com/..."
@@ -1271,7 +1518,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                 <div className="space-y-2">
                                                     <label className="text-[11px] font-semibold text-slate-500 tracking-wide">SketchUp 3D</label>
                                                     <Input
-                                                        disabled={!isCurrentStageEditable && userRole !== 'admin'}
+                                                        disabled={!canEditDesignLinks}
                                                         value={sketchUpLink}
                                                         onChange={e => setSketchUpLink(e.target.value)}
                                                         placeholder="https://drive.google.com/..."
@@ -1319,12 +1566,12 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                         <CardDescription>集中管理報價單及合約 (PDF/圖片)</CardDescription>
                                     </div>
                                     {(isCurrentStageEditable || userRole === 'admin') && (
-                                        <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                                        <Button onClick={() => { setForcedFileType(null); fileInputRef.current?.click(); }} disabled={uploading}>
                                             {uploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UploadCloud className="w-4 h-4 mr-2" />}
                                             快速上傳
                                         </Button>
                                     )}
-                                    <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx" onChange={handleFileUpload} />
+
                                 </CardHeader>
                                 <CardContent className="p-6">
                                     {project.files.filter((f: any) => f.type !== 'photo').length === 0 ? (
@@ -1408,11 +1655,11 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                         <CardDescription>紀錄工程前後及各種損耗細節</CardDescription>
                                     </div>
                                     {(isCurrentStageEditable || userRole === 'admin') && (
-                                        <Button onClick={() => photoInputRef.current?.click()} disabled={uploading}>
+                                        <Button onClick={() => { setForcedFileType('photo'); photoInputRef.current?.click(); }} disabled={uploading}>
                                             {uploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UploadCloud className="w-4 h-4 mr-2" />} 上傳媒體
                                         </Button>
                                     )}
-                                    <input ref={photoInputRef} type="file" className="hidden" accept="image/*,video/mp4,video/quicktime" onChange={handleFileUpload} />
+
                                 </CardHeader>
                                 <CardContent className="p-6">
 
@@ -1457,109 +1704,118 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                             </Card>
                         </TabsContent >
 
-                        {/* Tab: Timeline */}
-                        <TabsContent value="timeline" className="mt-0 outline-none">
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between border-b pb-4 mb-4">
-                                    <div>
-                                        <CardTitle className="text-xl font-bold tracking-tight">工程排程甘特圖 (Mode B)</CardTitle>
-                                        <CardDescription>獨立地盤的生命週期排程。輸入預計開工日及天數自動計算完工日 (避開星期日與特定公眾假期)。</CardDescription>
-                                    </div>
-                                    <div className="flex flex-col text-right">
-                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">系統預設開工日</p>
-                                        <p className="text-sm font-bold text-slate-900">{project.startDate || '未設定'}</p>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="px-6 pb-6">
-                                    <div className="space-y-4">
-                                    <div className="grid grid-cols-[minmax(120px,1.5fr)_1fr_80px_1fr] md:grid-cols-[minmax(200px,2fr)_1fr_100px_1fr] gap-4 px-4 py-2 border-b border-slate-200/60 pb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                        <div>工序 / 階段名稱</div>
-                                        <div>預計開工日期</div>
-                                        <div>工作天數</div>
-                                        <div>自動推算完工日期</div>
-                                    </div>
-                                    {CONSTRUCTION_PHASES.map((phase, idx) => {
-                                        const pData = project[phase.key] || {};
-                                        // Default startDate to project.startDate for first phase if unset, otherwise keep empty
-                                        const effectiveStart = pData.startDate || (idx === 0 ? project.startDate : '');
-                                        const calculatedEnd = pData.completionDate || (effectiveStart && pData.days ? addWorkingDays(effectiveStart, Number(pData.days)) : '');
 
-                                        return (
-                                            <div key={phase.key} className="grid grid-cols-[minmax(120px,1.5fr)_1fr_80px_1fr] md:grid-cols-[minmax(200px,2fr)_1fr_100px_1fr] gap-4 px-4 py-3 bg-slate-50/50 hover:bg-slate-50 rounded-xl items-center border border-transparent hover:border-slate-100 transition-colors">
-                                                <div className="flex items-center gap-3 min-w-0">
-                                                    <span className="text-slate-400">{phase.icon}</span>
-                                                    <span className="text-[13px] font-bold text-slate-700 truncate">{phase.label}</span>
-                                                </div>
-                                                <div>
-                                                    <Input
-                                                        type="date"
-                                                        value={effectiveStart}
-                                                        disabled={!isCurrentStageEditable && userRole !== 'admin'}
-                                                        onChange={async (e) => {
-                                                            const newStart = e.target.value;
-                                                            const newDays = pData.days || 3;
-                                                            const newEnd = addWorkingDays(newStart, Number(newDays));
-                                                            const updatedPhase = { ...pData, startDate: newStart, days: newDays, completionDate: newEnd };
-                                                            setProject((prev: any) => ({ ...prev, [phase.key]: updatedPhase }));
-                                                            await fetch(`/api/projects/${projectId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [phase.key]: updatedPhase }) });
-                                                        }}
-                                                        className="h-9 text-xs bg-white focus-visible:ring-blue-500/20"
-                                                    />
-                                                </div>
-                                                <div className="relative">
-                                                    <Input
-                                                        type="number" min="0" placeholder="天數"
-                                                        value={pData.days || ''}
-                                                        disabled={!isCurrentStageEditable && userRole !== 'admin'}
-                                                        onChange={async (e) => {
-                                                            const newDays = e.target.value;
-                                                            const newEnd = effectiveStart ? addWorkingDays(effectiveStart, Number(newDays)) : '';
-                                                            const updatedPhase = { ...pData, days: newDays, completionDate: newEnd };
-                                                            setProject((prev: any) => ({ ...prev, [phase.key]: updatedPhase }));
-                                                            await fetch(`/api/projects/${projectId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [phase.key]: updatedPhase }) });
-                                                        }}
-                                                        className="h-9 text-xs bg-white focus-visible:ring-blue-500/20"
-                                                    />
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="h-9 flex items-center px-3 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-md w-full shadow-sm">
-                                                        {calculatedEnd ? new Date(calculatedEnd).toLocaleDateString('zh-HK') : '—'}
-                                                    </div>
-                                                    {(isCurrentStageEditable || userRole === 'admin') && calculatedEnd && idx < CONSTRUCTION_PHASES.length - 1 && (
-                                                        <button
-                                                            type="button"
-                                                            title="將此作爲下一階段開工日"
-                                                            onClick={async () => {
-                                                                const nextPhase = CONSTRUCTION_PHASES[idx + 1];
-                                                                const nextPhaseData = project[nextPhase.key] || {};
-                                                                // Next phase starts next day essentially? Standardly it can be next working day.
-                                                                const nextStart = addWorkingDays(calculatedEnd, 1);
-                                                                const nextEnd = nextStart && nextPhaseData.days ? addWorkingDays(nextStart, Number(nextPhaseData.days)) : '';
-                                                                const updatedNextPhase = { ...nextPhaseData, startDate: nextStart, completionDate: nextEnd };
-                                                                setProject((prev: any) => ({ ...prev, [nextPhase.key]: updatedNextPhase }));
-                                                                await fetch(`/api/projects/${projectId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [nextPhase.key]: updatedNextPhase }) });
-                                                                toast.success(`聯動成功！${nextPhase.label} 開工日已設為 ${nextStart}`);
-                                                            }}
-                                                            className="shrink-0 p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                                                        >
-                                                            <LinkIcon className="h-4 w-4" />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                    </div>
-                                </CardContent>
-                            </Card>
+                        {/* Tab: Engineering Timeline (Gantt Builder) */}
+                        <TabsContent value="timeline" className="mt-0 outline-none">
+                            {project && (
+                                <div className="space-y-6">
+                                    <AdvancedGanttChart projects={[project]} />
+                                    <GanttTimelineEditor 
+                                        project={project} 
+                                        isOpen={true} 
+                                        onClose={() => {}} 
+                                    onSave={async (newTimeline, overallEndDate, globalStartDate) => {
+                                        toast.info('儲存排期中...');
+                                        try {
+                                            setProject((prev: any) => ({ ...prev, ganttTimeline: newTimeline, startDate: globalStartDate }));
+                                            const res = await fetch(`/api/projects/${projectId}`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ ganttTimeline: newTimeline, completionDate: overallEndDate, startDate: globalStartDate })
+                                            });
+                                            if (!res.ok) throw new Error('Failed to save timeline');
+                                            await fetchProject();
+                                            toast.success('已儲存排期更新');
+                                        } catch (error) {
+                                            toast.error('儲存排期失敗，請重試');
+                                        }
+                                    }}
+                                />
+                                </div>
+                            )}
                         </TabsContent>
                     </Tabs >
                 </div >
             </motion.div >
 
+            {/* 編輯專案資料 Modal */}
+            <Dialog open={isEditProjectOpen} onOpenChange={setIsEditProjectOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-slate-800">
+                            <Edit2 className="w-5 h-5 text-blue-500" /> 編輯專案基礎資料
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 px-6 py-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-600">客戶名稱</label>
+                            <Input
+                                type="text"
+                                value={editForm.clientName}
+                                onChange={e => setEditForm({ ...editForm, clientName: e.target.value })}
+                                className="bg-slate-50 border-slate-200 focus-visible:ring-blue-500/20 rounded-xl h-11"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-600">工程類別</label>
+                            <Input
+                                type="text"
+                                value={editForm.renovationType}
+                                onChange={e => setEditForm({ ...editForm, renovationType: e.target.value })}
+                                className="bg-slate-50 border-slate-200 focus-visible:ring-blue-500/20 rounded-xl h-11"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-600">物業層數/類型</label>
+                            <Input
+                                type="text"
+                                value={editForm.propertyType}
+                                onChange={e => setEditForm({ ...editForm, propertyType: e.target.value })}
+                                className="bg-slate-50 border-slate-200 focus-visible:ring-blue-500/20 rounded-xl h-11"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-600">實用面積 (呎)</label>
+                                <Input
+                                    type="number"
+                                    value={editForm.area || ''}
+                                    onChange={e => setEditForm({ ...editForm, area: Number(e.target.value) })}
+                                    className="bg-slate-50 border-slate-200 focus-visible:ring-blue-500/20 rounded-xl h-11"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-600">預算金額 (萬 HKD)</label>
+                                <Input
+                                    type="number"
+                                    value={editForm.budget ? editForm.budget / 10000 : ''}
+                                    onChange={e => setEditForm({ ...editForm, budget: Number(e.target.value) * 10000 })}
+                                    className="bg-slate-50 border-slate-200 focus-visible:ring-blue-500/20 rounded-xl h-11"
+                                />
+                            </div>
+                            <div className="space-y-2 col-span-2">
+                                <label className="text-sm font-semibold text-slate-600">開工日期</label>
+                                <Input
+                                    type="date"
+                                    value={editForm.startDate}
+                                    onChange={e => setEditForm({ ...editForm, startDate: e.target.value })}
+                                    className="bg-slate-50 border-slate-200 focus-visible:ring-blue-500/20 rounded-xl h-11"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditProjectOpen(false)} className="rounded-xl h-10 px-5">取消</Button>
+                        <Button onClick={handleSaveEditProject} disabled={savingEdit} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 px-6 font-semibold shadow-sm">
+                            {savingEdit ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 儲存資料
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* 新增約見 Dialog (Auto-Save) */}
             <Dialog open={isAddMeetingOpen} onOpenChange={setIsAddMeetingOpen}>
-                <DialogContent>
+                <DialogContent className="overflow-visible">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-slate-800">
                             <Clock className="w-5 h-5 text-amber-500" /> 新增約見記錄
@@ -1568,22 +1824,57 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                     <div className="space-y-4 px-6 py-4">
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-600">約定時間 <span className="text-red-500">*</span></label>
-                            <Input
-                                type="datetime-local"
-                                value={newMeeting.dateTime}
-                                onChange={e => setNewMeeting({ ...newMeeting, dateTime: e.target.value })}
-                                className="bg-slate-50 border-slate-200 focus-visible:ring-amber-500/20 rounded-xl h-11"
-                            />
+                            <div className="flex gap-2">
+                                <Input
+                                    type="date"
+                                    value={newMeeting.dateTime ? newMeeting.dateTime.split('T')[0] : ''}
+                                    onChange={e => {
+                                        const dateStr = e.target.value;
+                                        const timeStr = newMeeting.dateTime ? (newMeeting.dateTime.split('T')[1] || '09:00') : '09:00';
+                                        setNewMeeting({ ...newMeeting, dateTime: dateStr ? `${dateStr}T${timeStr}` : '' });
+                                    }}
+                                    className="bg-slate-50 border-slate-200 focus-visible:ring-amber-500/20 rounded-xl h-11 w-full"
+                                />
+                                <Select
+                                    value={newMeeting.dateTime ? (newMeeting.dateTime.split('T')[1] || '09:00') : '09:00'}
+                                    onValueChange={(val) => {
+                                        const dateStr = newMeeting.dateTime ? (newMeeting.dateTime.split('T')[0] || '') : '';
+                                        setNewMeeting({ ...newMeeting, dateTime: dateStr ? `${dateStr}T${val}` : `T${val}` });
+                                    }}
+                                >
+                                    <SelectTrigger className="bg-slate-50 border-slate-200 h-11 w-[120px] rounded-xl focus:ring-amber-500/20 outline-none">
+                                        <SelectValue placeholder="時間" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-[300px]">
+                                        {TIME_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-600">見面地點 (選填)</label>
-                            <Input
-                                type="text"
-                                placeholder="例如: 荃灣海之戀 / 辦公室"
-                                value={newMeeting.location}
-                                onChange={e => setNewMeeting({ ...newMeeting, location: e.target.value })}
-                                className="bg-slate-50 border-slate-200 focus-visible:ring-amber-500/20 rounded-xl h-11"
-                            />
+                            <Select 
+                                value={['地盤', '寫字樓', ''].includes(newMeeting.location) ? newMeeting.location : 'other'} 
+                                onValueChange={(val) => setNewMeeting({ ...newMeeting, location: val === 'other' ? '咖啡室/其他' : val })}
+                            >
+                                <SelectTrigger className="bg-slate-50 border-slate-200 h-11 rounded-xl focus:ring-amber-500/20 outline-none">
+                                    <SelectValue placeholder="選項 (地盤 / 寫字樓 / 其他)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="地盤">地盤</SelectItem>
+                                    <SelectItem value="寫字樓">寫字樓</SelectItem>
+                                    <SelectItem value="other">其他 (請註明)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {!['地盤', '寫字樓', ''].includes(newMeeting.location) && (
+                                <Input
+                                    type="text"
+                                    placeholder="請輸入地點 (例如：Starbucks, 客戶公司...)"
+                                    value={newMeeting.location === '其他' || newMeeting.location === '咖啡室/其他' ? '' : newMeeting.location}
+                                    onChange={(e) => setNewMeeting({ ...newMeeting, location: e.target.value || '咖啡室/其他' })}
+                                    className="bg-slate-50 border-slate-200 focus-visible:ring-amber-500/20 rounded-xl h-11 w-full text-sm mt-2 placeholder:text-slate-400"
+                                />
+                            )}
                         </div>
                     </div>
                     <DialogFooter>
@@ -1631,23 +1922,30 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
                         {/* Phases Accordion */}
                         <div className="bg-white rounded-[16px] border border-[#E8E8ED] shadow-sm overflow-hidden flex flex-col divide-y divide-[#E8E8ED]">
-                            {CONSTRUCTION_PHASES.map((phase) => {
+                            {(project?.ganttTimeline?.length > 0 
+                                ? project.ganttTimeline 
+                                : CONSTRUCTION_PHASES.map((p, idx) => ({ id: `default-${idx}`, key: p.key, name: p.label, duration: 5, isIncluded: true }))
+                            ).filter((p: any) => p.isIncluded).map((phase: any) => {
+                                const staticPhaseDef = CONSTRUCTION_PHASES.find(c => c.key === phase.key);
+                                const fields = staticPhaseDef ? staticPhaseDef.fields : [];
+                                const icon = staticPhaseDef ? staticPhaseDef.icon : '🚧';
+                                
                                 const phaseData = tempProgressData[phase.key] || {};
-                                const doneCount = phase.fields.filter(f => phaseData[f.key] === true).length;
-                                const totalCount = phase.fields.length;
+                                const doneCount = fields.filter((f: any) => phaseData[f.key] === true).length;
+                                const totalCount = fields.length;
                                 const allDone = doneCount === totalCount && totalCount > 0;
-                                const isExpanded = expandedPhases.includes(phase.key);
+                                const isExpanded = expandedPhases.includes(phase.id || phase.key);
 
                                 return (
-                                    <div key={phase.key} className="bg-white transition-colors">
+                                    <div key={phase.id || phase.key} className="bg-white transition-colors">
                                         <button
                                             type="button"
-                                            onClick={() => setExpandedPhases(prev => prev.includes(phase.key) ? prev.filter(k => k !== phase.key) : [...prev, phase.key])}
+                                            onClick={() => setExpandedPhases(prev => prev.includes(phase.id || phase.key) ? prev.filter(k => k !== (phase.id || phase.key)) : [...prev, phase.id || phase.key])}
                                             className={`w-full flex items-center justify-between px-5 transition-all outline-none ${isExpanded ? 'bg-[#F5F5F7] py-4' : 'hover:bg-[#F5F5F7] py-4'}`}
                                         >
                                             <div className="flex items-center gap-3.5 min-w-0">
-                                                <span className="text-base shrink-0 opacity-80">{phase.icon}</span>
-                                                <span className={`text-[14px] tracking-wide font-bold truncate ${allDone ? 'text-emerald-600' : 'text-[#1D1D1F]'}`}>{phase.label}</span>
+                                                <span className="text-base shrink-0 opacity-80">{icon}</span>
+                                                <span className={`text-[14px] tracking-wide font-bold truncate ${allDone ? 'text-emerald-600' : 'text-[#1D1D1F]'}`}>{phase.name}</span>
                                             </div>
                                             <div className="flex items-center gap-3 shrink-0">
                                                 <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${allDone ? 'bg-emerald-100/50 text-emerald-600' : 'bg-[#E8E8ED] text-[#424245]'}`}>
@@ -1659,7 +1957,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
                                         {isExpanded && (
                                             <div className="bg-white px-2 py-2">
-                                                {phase.fields.map((field) => {
+                                                {fields.map((field: any) => {
                                                     const checked = phaseData[field.key] === true;
                                                     return (
                                                         <button 
@@ -1694,7 +1992,11 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                 </DialogContent>
             </Dialog>
 
+
+
             {ConfirmDialogComponent}
+            <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx" onChange={handleFileUpload} />
+            <input ref={photoInputRef} type="file" className="hidden" accept="image/*,video/mp4,video/quicktime" onChange={handleFileUpload} />
         </>
     );
 }

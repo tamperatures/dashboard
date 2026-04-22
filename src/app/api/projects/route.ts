@@ -18,11 +18,11 @@ export async function GET() {
     return NextResponse.json({ projects });
 }
 
-// POST /api/projects — create project (Admin only)
+// POST /api/projects — create project (Any logged-in user can create)
 export async function POST(request: NextRequest) {
     const session = await auth();
-    if (!session?.user || (session.user as any).role !== 'admin') {
-        return NextResponse.json({ error: '權限不足' }, { status: 403 });
+    if (!session?.user) {
+        return NextResponse.json({ error: '未登入' }, { status: 401 });
     }
 
     const body = await request.json();

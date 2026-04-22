@@ -73,6 +73,11 @@ export default function EmployeesPage() {
     const [masterPhone, setMasterPhone] = useState('');
     const [masterSkills, setMasterSkills] = useState<string[]>([]);
     
+    // Reset Password Form state
+    const [resetUser, setResetUser] = useState<{ id: string; name: string } | null>(null);
+    const [resetPassword, setResetPassword] = useState('');
+    const [resetLoading, setResetLoading] = useState(false);
+    
     useEffect(() => { fetchEmployees(); }, []);
 
     const fetchEmployees = async () => {
@@ -209,6 +214,40 @@ export default function EmployeesPage() {
             fetchEmployees();
         } catch {
             toast.error('刪除失敗');
+        }
+    };
+
+    const openResetPasswordModal = (id: string, name: string) => {
+        setResetUser({ id, name });
+        setResetPassword('');
+        setResetLoading(false);
+    };
+
+    const confirmResetPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!resetUser) return;
+        if (resetPassword.length < 6) {
+            toast.error('密碼長度最少需要 6 個字元');
+            return;
+        }
+        
+        setResetLoading(true);
+        try {
+            const res = await fetch(`/api/employees/${resetUser.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: resetPassword }),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || '重設失敗');
+            }
+            toast.success(`已經成功重設 ${resetUser.name} 的密碼`);
+            setResetUser(null);
+        } catch (err: any) {
+            toast.error(err.message || '重設失敗');
+        } finally {
+            setResetLoading(false);
         }
     };
 
@@ -368,10 +407,15 @@ export default function EmployeesPage() {
                                             </td>
                                             <td className="px-4 py-3.5 text-right">
                                                 <div className="flex items-center justify-end gap-1">
-                                                    <button onClick={() => openEditModal(emp)} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+                                                    {(userRole === 'admin') && (
+                                                        <button onClick={() => openResetPasswordModal(emp.id, emp.name)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="重設密碼">
+                                                            <Lock className="h-4 w-4" />
+                                                        </button>
+                                                    )}
+                                                    <button onClick={() => openEditModal(emp)} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="編輯">
                                                         <Edit className="h-4 w-4" />
                                                     </button>
-                                                    <button onClick={() => handleDelete(emp.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                                                    <button onClick={() => handleDelete(emp.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="刪除">
                                                         <Trash2 className="h-4 w-4" />
                                                     </button>
                                                 </div>
@@ -605,6 +649,45 @@ export default function EmployeesPage() {
                                 <Button type="button" variant="outline" onClick={() => setShowMasterModal(false)}>取消</Button>
                                 <Button type="submit" disabled={formLoading} className="bg-amber-600 hover:bg-amber-700">
                                     {formLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '儲存師傅'}
+                                </Button>
+                            </div>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Reset Password Modal */}
+                <Dialog open={!!resetUser} onOpenChange={(open) => !open && setResetUser(null)}>
+                    <DialogContent className="max-w-sm">
+                        <DialogHeader>
+                            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                                <span className="p-2 rounded-full bg-amber-100 text-amber-600">
+                                    <Lock className="h-4 w-4" />
+                                </span>
+                                重設密碼
+                            </DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={confirmResetPassword} className="space-y-4 px-6 pb-6 pt-2">
+                            <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                                您正在強制重設 <strong>{resetUser?.name}</strong> 的密碼。一旦確認，該員工需要使用新密碼登入。
+                            </p>
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold text-slate-500 uppercase">新密碼 (最少 6 碼)</label>
+                                <Input 
+                                    type="password" 
+                                    value={resetPassword} 
+                                    onChange={e => setResetPassword(e.target.value)} 
+                                    placeholder="輸入新密碼" 
+                                    required 
+                                    minLength={6}
+                                    className="bg-slate-50 border-slate-200"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-4">
+                                <Button type="button" variant="ghost" onClick={() => setResetUser(null)}>取消</Button>
+                                <Button type="submit" disabled={resetLoading} className="bg-amber-600 hover:bg-amber-700 text-white">
+                                    {resetLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                    確認重設
                                 </Button>
                             </div>
                         </form>

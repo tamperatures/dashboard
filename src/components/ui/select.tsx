@@ -11,6 +11,7 @@ interface SelectContextValue {
     open: boolean;
     setOpen: (open: boolean) => void;
     triggerRef: React.RefObject<HTMLDivElement | null>;
+    disabled?: boolean;
 }
 
 const SelectContext = React.createContext<SelectContextValue>({
@@ -18,8 +19,8 @@ const SelectContext = React.createContext<SelectContextValue>({
 });
 
 /* ──── Select (Root) ──── */
-const Select = ({ children, value, onValueChange, defaultValue }: {
-    children: React.ReactNode; value?: string; onValueChange?: (v: string) => void; defaultValue?: string;
+const Select = ({ children, value, onValueChange, defaultValue, disabled }: {
+    children: React.ReactNode; value?: string; onValueChange?: (v: string) => void; defaultValue?: string; disabled?: boolean;
 }) => {
     const [internalValue, setInternalValue] = React.useState(value ?? defaultValue ?? '');
     const [open, setOpen] = React.useState(false);
@@ -28,7 +29,7 @@ const Select = ({ children, value, onValueChange, defaultValue }: {
     const handleChange = (v: string) => { setInternalValue(v); onValueChange?.(v); setOpen(false); };
 
     return (
-        <SelectContext.Provider value={{ value: currentValue, onValueChange: handleChange, open, setOpen, triggerRef }}>
+        <SelectContext.Provider value={{ value: currentValue, onValueChange: handleChange, open, setOpen, triggerRef, disabled }}>
             <div className="relative">{children}</div>
         </SelectContext.Provider>
     );
@@ -37,7 +38,7 @@ const Select = ({ children, value, onValueChange, defaultValue }: {
 /* ──── SelectTrigger ──── */
 const SelectTrigger = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & { id?: string }>(
     ({ className, children, ...props }, ref) => {
-        const { open, setOpen, triggerRef } = React.useContext(SelectContext);
+        const { open, setOpen, triggerRef, disabled } = React.useContext(SelectContext);
         return (
             <div
                 ref={(node) => {
@@ -45,10 +46,11 @@ const SelectTrigger = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTML
                     if (typeof ref === 'function') ref(node);
                     else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
                 }}
-                onClick={() => setOpen(!open)}
+                onClick={() => { if (!disabled) setOpen(!open); }}
                 className={cn(
                     "flex h-11 w-full items-center justify-between rounded-xl border bg-[#F5F5F7] px-4 py-2 text-sm text-[#1D1D1F] cursor-pointer transition-all duration-200",
                     open ? "border-[#0071E3] ring-2 ring-[#0071E3]/20 bg-white" : "border-[#D1D1D6] hover:border-[#86868B]",
+                    disabled && "opacity-50 cursor-not-allowed pointer-events-none border-dashed hover:border-[#D1D1D6]",
                     className
                 )}
                 {...props}
@@ -64,9 +66,9 @@ const SelectTrigger = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTML
 SelectTrigger.displayName = "SelectTrigger";
 
 /* ──── SelectValue ──── */
-const SelectValue = ({ placeholder }: { placeholder?: string }) => {
+const SelectValue = ({ placeholder, children }: { placeholder?: string, children?: React.ReactNode }) => {
     const { value } = React.useContext(SelectContext);
-    return <span className={cn("truncate", value ? 'text-[#1D1D1F] font-medium' : 'text-[#86868B]')}>{value || placeholder || '請選擇...'}</span>;
+    return <span className={cn("truncate", value ? 'text-[#1D1D1F] font-medium' : 'text-[#86868B]')}>{children || value || placeholder || '請選擇...'}</span>;
 };
 
 /* ──── SelectContent ──── */

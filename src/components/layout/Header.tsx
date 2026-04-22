@@ -194,7 +194,7 @@ export function Header() {
     const getStageLabel = (stage: string) => {
         const map: Record<string, string> = {
             'S01_客戶查詢': 'S01', 'S02_見客前準備': 'S02', 'S03_見客出QUOTE': 'S03',
-            'S04_落訂及設計': 'S04', 'S05_入則及批則': 'S05', 'S06_工程施工': 'S06',
+            'S04_落訂及設計': 'S04', 'S05_入則及批則': 'S05', 'P06_工程施工': 'S06',
             'S07_完工驗收': 'S07', 'S08_保養期': 'S08',
         };
         return map[stage] || stage?.slice(0, 3) || '—';

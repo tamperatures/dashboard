@@ -13,9 +13,10 @@ const FRONTEND_FIELDS = [
     'assignedTo', 'pmResponsible',
     'floorPlanLink', 'sketchUpLink',
     'stage', 'progress', 'startDate', 'endDate',
+    'unreadDepartments',
 ];
 
-// Engineering department (工程部) — handles S06-S08 stage data
+// Engineering department (工程部) — handles P06-P08 stage data
 const ENGINEERING_FIELDS = [
     'designerResponsible', 'demolitionContractor', 'plumbingContractor',
     'masonryContractor', 'furnitureContractor',
@@ -24,7 +25,8 @@ const ENGINEERING_FIELDS = [
     'phase1SitePrep', 'phase2Demolition', 'phase3Plumbing', 'phase4Masonry',
     'phase5Carpentry', 'phase6Installation', 'phase7PreInspection',
     'phase8OfficialInspection', 'phase9Handover', 'phase10Maintenance',
-    'stage', 'progress', 'startDate', 'endDate',
+    'stage', 'progress', 'startDate', 'endDate', 'completionDate', 'ganttTimeline',
+    'unreadDepartments',
 ];
 
 // Department name mapping
@@ -50,6 +52,8 @@ const ALL_FIELDS = [
     'phase1SitePrep', 'phase2Demolition', 'phase3Plumbing', 'phase4Masonry',
     'phase5Carpentry', 'phase6Installation', 'phase7PreInspection',
     'phase8OfficialInspection', 'phase9Handover', 'phase10Maintenance',
+    'ganttTimeline', 'completionDate',
+    'unreadDepartments',
 ];
 
 // GET /api/projects/[id] — single project detail (all users can view)

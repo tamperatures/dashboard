@@ -31,13 +31,13 @@ const item = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transiti
 
 const STAGE_COLORS: Record<string, string> = {
   'S01_客戶查詢': '#F5A623', 'S02_見客前準備': '#8B5CF6', 'S03_初步報價': '#6366F1',
-  'S04_見客後跟進': '#D946EF', 'S05_後續會面': '#EC4899', 'S06_工程啟動': '#3B82F6',
-  'S07_工程進行中': '#10B981', 'S08_工程完成': '#86868B',
+  'S04_見客後跟進': '#D946EF', 'S05_後續會面': '#EC4899', 'P06_工程啟動': '#3B82F6',
+  'P07_工程進行中': '#10B981', 'P08_工程完成': '#86868B',
 };
 const STAGE_LABELS: Record<string, string> = {
   'S01_客戶查詢': 'S01 查詢', 'S02_見客前準備': 'S02 準備', 'S03_初步報價': 'S03 報價',
-  'S04_見客後跟進': 'S04 跟進', 'S05_後續會面': 'S05 會面', 'S06_工程啟動': 'S06 啟動',
-  'S07_工程進行中': 'S07 進行中', 'S08_工程完成': 'S08 完成',
+  'S04_見客後跟進': 'S04 跟進', 'S05_後續會面': 'S05 會面', 'P06_工程啟動': 'P06 啟動',
+  'P07_工程進行中': 'P07 進行中', 'P08_工程完成': 'P08 完成',
 };
 
 // 用於推算當下子任務
@@ -55,7 +55,7 @@ const CONSTRUCTION_PHASES = [
 ];
 
 function getActiveTask(p: any) {
-    if (!['S06_工程啟動', 'S07_工程進行中', 'S08_工程完成'].includes(p.stage)) return null;
+    if (!['P06_工程啟動', 'P07_工程進行中', 'P08_工程完成'].includes(p.stage)) return null;
     for (const phase of CONSTRUCTION_PHASES) {
         for (const field of phase.fields) {
             if (!p[phase.key]?.[field.key]) {
@@ -94,10 +94,38 @@ export default function Dashboard() {
   };
 
   /* ── Derived data ── */
-  const activeProjects = projects.filter(p => p.stage === 'S06_工程啟動' || p.stage === 'S07_工程進行中');
-  const completedThisMonth = projects.filter(p => p.stage === 'S08_工程完成');
+  const engineeringProjects = projects.filter(p => ['P06_工程啟動', 'P07_工程進行中'].includes(p.stage));
+  const completedThisMonth = projects.filter(p => p.stage === 'P08_工程完成');
   const pendingQuotes = projects.filter(p => ['S01_客戶查詢', 'S02_見客前準備', 'S03_初步報價', 'S04_見客後跟進', 'S05_後續會面'].includes(p.stage));
   const totalBudget = projects.reduce((sum, p) => sum + (p.budget || 0), 0);
+
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  let delayedProjects = 0;
+  let activeEngineering = 0;
+  let upcomingEngineering = 0;
+
+  engineeringProjects.forEach(p => {
+    const endStr = (p as any).completionDate || p.endDate;
+    if (!p.startDate && !endStr) {
+      activeEngineering++; 
+      return;
+    }
+    
+    const sDate = p.startDate ? new Date(p.startDate) : new Date(0);
+    const eDate = endStr ? new Date(endStr) : new Date(8640000000000000);
+    sDate.setHours(0,0,0,0);
+    eDate.setHours(0,0,0,0);
+    
+    if (todayDate > eDate && p.progress !== 100) {
+       delayedProjects++;
+    } else if (todayDate >= sDate && todayDate <= eDate) {
+       activeEngineering++;
+    } else if (todayDate < sDate) {
+       upcomingEngineering++;
+    }
+  });
 
   const allEvents: TaskEvent[] = (() => {
     const list: TaskEvent[] = [...tasks];
@@ -168,9 +196,9 @@ export default function Dashboard() {
         <>
           {/* KPI Cards */}
           <motion.div variants={item} className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard label="施工中項目" value={activeProjects.length} icon={HardHat} bgClass="bg-[#F5F5F7] text-[#1D1D1F]" />
-            <KpiCard label="總預算額" value={totalBudget > 0 ? `HK$${(totalBudget / 1000).toFixed(0)}k` : '—'} icon={DollarSign} bgClass="bg-[#F5F5F7] text-[#1D1D1F]" />
-            <KpiCard label="前端跟進中" value={pendingQuotes.length} icon={PenTool} bgClass="bg-[#F5F5F7] text-[#1D1D1F]" />
+            <KpiCard label="即將開工" value={upcomingEngineering} icon={FolderKanban} bgClass="bg-[#F5F5F7] text-[#1D1D1F]" />
+            <KpiCard label="施工中項目" value={activeEngineering} icon={HardHat} bgClass="bg-[#F5F5F7] text-[#1D1D1F]" />
+            <KpiCard label="延誤項目" value={delayedProjects} icon={Clock} bgClass={delayedProjects > 0 ? "bg-red-50 text-red-600" : "bg-[#F5F5F7] text-[#1D1D1F]"} />
             <KpiCard label="已完工" value={completedThisMonth.length} icon={CheckSquare} bgClass="bg-[#F5F5F7] text-[#1D1D1F]" />
           </motion.div>
 

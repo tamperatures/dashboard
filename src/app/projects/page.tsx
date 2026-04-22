@@ -37,11 +37,12 @@ interface Project {
     meetingDateTime?: string;
     status?: string;
     pendingStageRequest?: any;
+    unreadDepartments?: string[];
 }
 
 const STAGES = [
     'S01_客戶查詢', 'S02_見客前準備', 'S03_初步報價', 'S04_見客後跟進',
-    'S05_後續會面', 'S06_工程啟動', 'S07_工程進行中', 'S08_工程完成'
+    'S05_後續會面', 'P06_工程啟動', 'P07_工程進行中', 'P08_工程完成'
 ];
 
 const STAGE_COLORS: Record<string, { bg: string; text: string; dot: string; label: string }> = {
@@ -50,9 +51,9 @@ const STAGE_COLORS: Record<string, { bg: string; text: string; dot: string; labe
     'S03_初步報價': { bg: 'bg-indigo-50', text: 'text-indigo-700', dot: 'bg-indigo-400', label: 'S03 報價' },
     'S04_見客後跟進': { bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', dot: 'bg-fuchsia-400', label: 'S04 跟進' },
     'S05_後續會面': { bg: 'bg-pink-50', text: 'text-pink-700', dot: 'bg-pink-400', label: 'S05 會面' },
-    'S06_工程啟動': { bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-400', label: 'S06 啟動' },
-    'S07_工程進行中': { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-400', label: 'S07 進行中' },
-    'S08_工程完成': { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400', label: 'S08 完成' },
+    'P06_工程啟動': { bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-400', label: 'P06 啟動' },
+    'P07_工程進行中': { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-400', label: 'P07 進行中' },
+    'P08_工程完成': { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400', label: 'P08 完成' },
 };
 
 const STAGE_DEPARTMENTS: Record<string, string> = {
@@ -61,9 +62,9 @@ const STAGE_DEPARTMENTS: Record<string, string> = {
     'S03_初步報價': '銷售部',
     'S04_見客後跟進': '設計部',
     'S05_後續會面': '銷售部',
-    'S06_工程啟動': '工程部',
-    'S07_工程進行中': '工程部',
-    'S08_工程完成': '工程部',
+    'P06_工程啟動': '工程部',
+    'P07_工程進行中': '工程部',
+    'P08_工程完成': '工程部',
 };
 
 // 用於推算當下子任務
@@ -81,7 +82,7 @@ const CONSTRUCTION_PHASES = [
 ];
 
 function getActiveTask(p: any) {
-    if (!['S06_工程啟動', 'S07_工程進行中', 'S08_工程完成'].includes(p.stage)) return null;
+    if (!['P06_工程啟動', 'P07_工程進行中', 'P08_工程完成'].includes(p.stage)) return null;
     for (const phase of CONSTRUCTION_PHASES) {
         for (const field of phase.fields) {
             if (!p[phase.key]?.[field.key]) {
@@ -116,7 +117,9 @@ function ProjectsPageContent() {
     const [employees, setEmployees] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedStage, setSelectedStage] = useState<string | null>(null);
+    const [selectedTechPhase, setSelectedTechPhase] = useState<string | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [statusTab, setStatusTab] = useState<'Active' | 'Lost'>('Active');
     const searchParams = useSearchParams();
 
     useEffect(() => {
@@ -289,10 +292,17 @@ function ProjectsPageContent() {
         }
     };
 
-    // Staff can see all projects now. Permissions will be restricted at the detail/edit level.
-    const viewableProjects = projects;
+    const viewableProjects = projects.filter(p => statusTab === 'Active' ? p.status !== 'Lost' : p.status === 'Lost');
 
-    const filtered = selectedStage ? viewableProjects.filter(p => p.stage === selectedStage) : viewableProjects;
+    const filteredByStage = selectedStage ? viewableProjects.filter(p => p.stage === selectedStage) : viewableProjects;
+    
+    const filtered = selectedTechPhase 
+        ? filteredByStage.filter(p => {
+             const activeTask = getActiveTask(p);
+             if (!activeTask) return false;
+             return activeTask.phaseLabel.includes(selectedTechPhase);
+          })
+        : filteredByStage;
 
     const availableStages = STAGES;
 
@@ -311,36 +321,62 @@ function ProjectsPageContent() {
                     <p className="text-[17px] text-[#86868B] mt-2 max-w-xl">
                         追蹤所有裝修工程進度、工程狀態及跟進項目，確保每項工程如期進行。
                     </p>
+                    <div className="mt-6 flex items-center gap-2">
+                        <button onClick={() => setStatusTab('Active')} className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${statusTab === 'Active' ? 'bg-white text-black' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>活躍項目</button>
+                        <button onClick={() => setStatusTab('Lost')} className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${statusTab === 'Lost' ? 'bg-white text-black' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>歸檔 / 未成交</button>
+                    </div>
                 </div>
-                {userRole === 'admin' && (
-                    <button
-                        onClick={() => setShowCreateModal(true)}
-                        className="shrink-0 h-[44px] px-[20px] rounded-[980px] bg-[#0071e3] hover:bg-[#0077ED] text-white text-[17px] font-normal flex items-center gap-2 transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] self-start sm:self-center"
-                    >
-                        新增項目
-                    </button>
-                )}
+                <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="shrink-0 h-[44px] px-[20px] rounded-[980px] bg-[#0071e3] hover:bg-[#0077ED] text-white text-[17px] font-normal flex items-center gap-2 transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] self-start sm:self-center"
+                >
+                    新增項目
+                </button>
             </motion.div>
 
-            {/* Stage Filter Pills */}
-            <motion.div variants={fadeUp} className="flex w-full max-w-full overflow-x-auto flex-nowrap gap-2 pt-2 pb-4 scrollbar-hide sm:flex-wrap">
-                <button
-                    onClick={() => setSelectedStage(null)}
-                    className={`shrink-0 px-[14px] h-[32px] rounded-[11px] text-[14px] font-normal transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] ${!selectedStage ? 'bg-[#1D1D1F] text-white' : 'bg-[#fafafc] text-[rgba(0,0,0,0.8)] border border-[rgba(0,0,0,0.04)] hover:bg-[#E8E8ED]'}`}
-                >
-                    全部 <span className={!selectedStage ? 'opacity-80 ml-1 font-normal' : 'text-[#86868B] ml-1 font-normal'}>{viewableProjects.length}</span>
-                </button>
-                {stageCounts.map(s => (
-                    <button
-                        key={s.name}
-                        onClick={() => setSelectedStage(selectedStage === s.name ? null : s.name)}
-                        className={`shrink-0 px-[14px] h-[32px] rounded-[11px] text-[14px] font-normal transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] flex items-center gap-1.5 border ${selectedStage === s.name ? `bg-white border-[#0071e3] text-[#1D1D1F]` : 'bg-[#fafafc] border-[rgba(0,0,0,0.04)] text-[rgba(0,0,0,0.8)] hover:bg-[#E8E8ED]'}`}
-                    >
-                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                        {s.label} <span className="font-normal opacity-70 ml-0.5">{s.count}</span>
-                    </button>
-                ))}
-            </motion.div>
+            {/* Filter Bar Row */}
+            <div className="flex flex-col xl:flex-row xl:items-center gap-4 mb-6 relative z-10 w-full">
+                {/* Construction Tech Phase Filter (Dropdown) */}
+                <motion.div variants={fadeUp} className="shrink-0 w-full sm:w-auto">
+                    <Select value={selectedTechPhase || 'all'} onValueChange={(val) => setSelectedTechPhase(val === 'all' ? null : val)}>
+                        <SelectTrigger className="h-[36px] rounded-full bg-white border border-[#E5E5EA] text-[14px] font-medium w-full sm:w-[180px] shadow-sm hover:shadow-md hover:bg-[#F5F5F7] transition-all focus:ring-2 focus:ring-[#0071e3]/20 flex items-center justify-between px-4 ring-offset-0">
+                            <span className="truncate">{selectedTechPhase || '所有工程進度'}</span>
+                        </SelectTrigger>
+                        <SelectContent className="rounded-[16px] shadow-[0_8px_30px_rgba(0,0,0,0.12)] border-slate-100/50 p-1.5 bg-white/95 backdrop-blur-xl">
+                            <SelectItem value="all" className="text-[14px] font-medium rounded-xl focus:bg-[#0071e3]/10 focus:text-[#0071e3] py-2 cursor-pointer">所有工程進度</SelectItem>
+                            {CONSTRUCTION_PHASES.map(phase => {
+                                const cleanName = phase.label.replace(/^\d+\.\s*/, '');
+                                return <SelectItem key={phase.key} value={cleanName} className="text-[14px] font-medium rounded-xl focus:bg-[#0071e3]/10 focus:text-[#0071e3] py-2 cursor-pointer">{cleanName}</SelectItem>;
+                            })}
+                        </SelectContent>
+                    </Select>
+                </motion.div>
+
+                {/* Vertical Divider (Hidden on mobile/tablet) */}
+                <div className="hidden xl:block w-[1px] h-6 bg-[#E5E5EA] shrink-0"></div>
+
+                {/* Stage Filter Pills (Wrapped for easy viewing) */}
+                <motion.div variants={fadeUp} className="flex-1 w-full">
+                    <div className="flex w-full flex-wrap gap-2 items-center">
+                        <button
+                            onClick={() => setSelectedStage(null)}
+                            className={`shrink-0 px-[16px] h-[36px] rounded-full text-[14px] font-medium transition-all shadow-sm ${!selectedStage ? 'bg-[#1D1D1F] text-white shadow-md' : 'bg-white text-[#1D1D1F] border border-[#E5E5EA] hover:bg-[#F5F5F7]'}`}
+                        >
+                            全部階段 <span className={!selectedStage ? 'text-white/70 ml-1.5 text-[12px]' : 'text-[#86868B] ml-1.5 text-[12px]'}>{viewableProjects.length}</span>
+                        </button>
+                        {stageCounts.map(s => (
+                            <button
+                                key={s.name}
+                                onClick={() => setSelectedStage(selectedStage === s.name ? null : s.name)}
+                                className={`shrink-0 px-[16px] h-[36px] rounded-full text-[14px] font-medium transition-all flex items-center gap-2 shadow-sm border ${selectedStage === s.name ? `bg-white border-[#0071e3] text-[#0071e3] shadow-md ring-1 ring-[#0071e3]/20` : 'bg-white border-[#E5E5EA] text-[#1D1D1F] hover:bg-[#F5F5F7]'}`}
+                            >
+                                <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+                                {s.label} <span className={`text-[12px] ${selectedStage === s.name ? 'text-[#0071e3]/70' : 'text-[#86868B]'}`}>{s.count}</span>
+                            </button>
+                        ))}
+                    </div>
+                </motion.div>
+            </div>
 
             {/* Project Cards Grid */}
             <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -352,6 +388,7 @@ function ProjectsPageContent() {
                             <div className="col-span-full py-20 text-center text-slate-400">尚無項目資料</div>
                         ) : filtered.map((project, idx) => {
                             const stageStyle = STAGE_COLORS[project.stage] || STAGE_COLORS['S01_客戶查詢'];
+                            const isUserDept = userDepts.includes(STAGE_DEPARTMENTS[project.stage]);
 
                             return (
                                 <motion.div key={project.id} layout initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.2 }}>
@@ -366,6 +403,18 @@ function ProjectsPageContent() {
                                                     {project.pendingStageRequest && (
                                                         <div className="px-2 py-0.5 rounded-[5px] text-[11px] font-medium bg-amber-50 text-amber-600 flex items-center gap-1">
                                                             <Clock className="w-3 h-3" /> 待審批
+                                                        </div>
+                                                    )}
+                                                    {project.unreadDepartments?.some((d: string) => userDepts.includes(d)) && (
+                                                        <div className="px-2 py-0.5 rounded-[5px] text-[11px] font-bold bg-blue-50 text-blue-600 flex items-center gap-1.5 shadow-sm border border-blue-100">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                                            新交接
+                                                        </div>
+                                                    )}
+                                                    {isUserDept && statusTab === 'Active' && (
+                                                        <div className="px-2 py-0.5 rounded-[5px] text-[11px] font-bold bg-rose-50 text-rose-600 flex items-center gap-1.5 shadow-sm border border-rose-100">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                                            需跟進
                                                         </div>
                                                     )}
                                                     <div className={`px-2 py-0.5 rounded-[5px] text-[11px] font-medium ${stageStyle.bg} ${stageStyle.text}`}>
