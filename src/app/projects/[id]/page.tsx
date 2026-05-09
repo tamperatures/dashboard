@@ -39,7 +39,7 @@ const ALL_PHASES = [
 const STAGE_WIDGETS: Record<string, string[]> = {
     'S01_客戶查詢': ['overview', 'meetings', 'notes'],
     'S02_見客前準備': ['overview', 'design_links', 'meetings', 'notes'],
-    'S03_初步報價': ['overview', 'quote_upload', 'design_links', 'status', 'meetings', 'notes'],
+    'S03_初步報價': ['overview', 'design_links', 'status', 'meetings', 'notes'],
     'S04_見客後跟進': ['overview', 'design_links', 'status', 'meetings', 'notes'],
     'S05_後續會面': ['overview', 'design_links', 'status', 'meetings', 'notes'],
     'P06_工程啟動': ['overview', 'design_links', 'construction_team', 'notes'],
@@ -83,6 +83,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
     const [uploading, setUploading] = useState(false);
     const [forcedFileType, setForcedFileType] = useState<string | null>(null);
+    const [photoFolder, setPhotoFolder] = useState<string>('uncategorized');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -92,6 +93,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
     const [floorPlanLink, setFloorPlanLink] = useState('');
     const [sketchUpLink, setSketchUpLink] = useState('');
+    const [quotationLink, setQuotationLink] = useState('');
     // Dynamic meetings
     interface MeetingEntry { dateTime: string; location: string; createdByDept?: string; }
     const [meetings, setMeetings] = useState<MeetingEntry[]>([]);
@@ -229,6 +231,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             setProject(data.project);
             setFloorPlanLink(data.project.floorPlanLink || '');
             setSketchUpLink(data.project.sketchUpLink || '');
+            setQuotationLink(data.project.quotationLink || '');
             // Load meetings: prefer meetings array, fall back to legacy single meeting
             if (data.project.meetings && data.project.meetings.length > 0) {
                 setMeetings(data.project.meetings.map((m: any) => ({
@@ -458,12 +461,15 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
         }
 
         const isGoingBack = targetIdx < currentIdx;
+        const targetDept = targetPhase?.dept || '';
+        const currentDept = ALL_PHASES[currentIdx]?.dept || '';
+        const isCrossDept = targetDept !== '—' && currentDept !== targetDept;
 
         const confirmed = await confirm({
             title: isGoingBack ? '回退階段' : '更新階段',
             description: isGoingBack
                 ? `確定要將階段回退至「${targetPhase?.label}」嗎？`
-                : `確定要將階段推進至「${targetPhase?.label}」嗎？`,
+                : `確定要將階段推進至「${targetPhase?.label}」嗎？${isCrossDept ? `\n接收部門「${targetDept}」將會收到新交接的紅點提示。` : ''}`,
             variant: isGoingBack ? 'warning' : 'info',
             confirmText: isGoingBack ? '確定回退' : '確定推進',
         });
@@ -473,10 +479,20 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
         const newProgress = Math.round(((targetIdx + 1) / ALL_PHASES.length) * 100);
 
         try {
+            const bodyPayload: any = { stage: newStageKey, progress: newProgress };
+            
+            // Add unread department marker if cross-department handoff
+            if (isCrossDept && !isGoingBack) {
+                const existingUnread = project.unreadDepartments || [];
+                if (!existingUnread.includes(targetDept)) {
+                    bodyPayload.unreadDepartments = [...existingUnread, targetDept];
+                }
+            }
+
             const res = await fetch(`/api/projects/${projectId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ stage: newStageKey, progress: newProgress })
+                body: JSON.stringify(bodyPayload)
             });
             if (res.ok) {
                 toast.success(`已更新至 ${targetPhase?.label}`);
@@ -507,6 +523,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                 body: JSON.stringify({
                     floorPlanLink,
                     sketchUpLink,
+                    quotationLink,
                     meetings: meetingsPayload,
                     meetingDateTime: firstMeeting?.dateTime || '',
                     meetingLocation: firstMeeting?.location || '',
@@ -603,17 +620,34 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                 finalName = `[v${vNum}] ${finalName}`;
             }
 
+            // Determine which department should be notified about this upload
+            // e.g. Sales uploads quotation → notify 設計部; Design uploads drawing → notify 銷售部/工程部
+            const FILE_NOTIFY_MAP: Record<string, string[]> = {
+                'quotation': ['設計部'],     // Sales uploads quote → Design needs to see
+                'drawing': ['銷售部', '工程部'],  // Design uploads drawing → Sales & Engineering
+                'contract': ['工程部', '會計部'],  // Contract → Engineering & Accounting
+            };
+            const notifyDepts = FILE_NOTIFY_MAP[fileType] || [];
+            const existingUnread = project.unreadDepartments || [];
+            const newUnreadDepts = notifyDepts.filter((d: string) => !existingUnread.includes(d) && !userDepts.includes(d));
+
+            const uploadBody: any = {
+                newFile: {
+                    name: finalName,
+                    url: fileData.url,
+                    size: fileData.size,
+                    type: fileType,
+                    ...(fileType === 'photo' && photoFolder ? { folder: photoFolder } : {}),
+                }
+            };
+            if (newUnreadDepts.length > 0) {
+                uploadBody.unreadDepartments = [...existingUnread, ...newUnreadDepts];
+            }
+
             const res = await fetch(`/api/projects/${projectId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    newFile: {
-                        name: finalName,
-                        url: fileData.url,
-                        size: fileData.size,
-                        type: fileType,
-                    }
-                })
+                body: JSON.stringify(uploadBody)
             });
 
             if (!res.ok) throw new Error('綁定至項目失敗');
@@ -798,7 +832,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="mb-8 bg-slate-100/80 p-1.5 rounded-xl h-auto border border-slate-200/60 shadow-sm">
                             <TabsTrigger value="overview" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">工作流程與資訊</TabsTrigger>
-                            <TabsTrigger value="documents" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">文件與圖則</TabsTrigger>
+                            {/* 文件與圖則 tab hidden — replaced by Google Drive links */}
                             <TabsTrigger value="photos" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">現場照片</TabsTrigger>
                             <TabsTrigger value="timeline" className="px-5 py-2.5 text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500/50">工程排程 (Timeline)</TabsTrigger>
                         </TabsList>
@@ -828,13 +862,21 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                             {ALL_PHASES.map((phase, idx) => {
                                                 const isDone = idx < currentStageIdx;
                                                 const isActive = idx === currentStageIdx;
+                                                const hasUnread = isActive && (project.unreadDepartments || []).some((d: string) => d === phase.dept);
+                                                const isMyDeptUnread = isActive && (project.unreadDepartments || []).some((d: string) => userDepts.includes(d));
 
                                                 return (
                                                     <div key={phase.key} className="relative pl-8 w-full transition-all duration-300">
 
                                                         {/* Dot Indicator on the line */}
                                                         <div className="absolute left-[-9px] top-5 flex items-center justify-center">
-                                                            {isActive ? (
+                                                            {isActive && hasUnread ? (
+                                                                /* Red dot — department has NOT reviewed/finished */
+                                                                <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center ring-4 ring-white shadow-sm">
+                                                                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                                                                </div>
+                                                            ) : isActive ? (
+                                                                /* Blue dot — department is working / has reviewed */
                                                                 <div className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center ring-4 ring-white shadow-sm">
                                                                     <div className="w-2 h-2 rounded-full bg-blue-600" />
                                                                 </div>
@@ -854,9 +896,18 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                                 } ${(!isActive && !isDone && userRole !== 'admin' && !userDepts.includes(phase.dept) && phase.dept !== '—') ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`}
                                                         >
                                                             <div className="flex items-center justify-between px-5 py-4">
-                                                                <h3 className={`text-base font-bold ${isActive ? 'text-slate-900' : isDone ? 'text-slate-800' : 'text-slate-500'}`}>
-                                                                    {phase.label}
-                                                                </h3>
+                                                                <div className="flex items-center gap-2">
+                                                                    <h3 className={`text-base font-bold ${isActive ? 'text-slate-900' : isDone ? 'text-slate-800' : 'text-slate-500'}`}>
+                                                                        {phase.label}
+                                                                    </h3>
+                                                                    {/* Inline unread badge for the active phase */}
+                                                                    {isActive && isMyDeptUnread && (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100 shadow-sm animate-in fade-in">
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                                                            新交接
+                                                                        </span>
+                                                                    )}
+                                                                </div>
 
                                                                 <Badge variant="secondary" className={`text-[10px] uppercase font-bold tracking-wider ${isActive ? 'bg-blue-100/50 text-blue-700' : 'text-slate-500'}`}>
                                                                     {phase.dept}
@@ -1191,10 +1242,16 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                             </CardHeader>
                                             <CardContent className="px-5 pt-3 pb-5">
                                                 <div className="space-y-3">
-                                                    {(project?.ganttTimeline?.length > 0 
-                                                        ? project.ganttTimeline 
-                                                        : CONSTRUCTION_PHASES.map((p, idx) => ({ id: `default-${idx}`, key: p.key, name: p.label, duration: 5, isIncluded: true }))
-                                                    ).filter((p: any) => p.isIncluded).map((phase: any) => {
+                                                    {(() => {
+                                                        // Phase keys for stage-based filtering
+                                                        const P07_KEYS = ['phase1SitePrep','phase2Demolition','phase3Plumbing','phase4Masonry','phase5Carpentry','phase6Installation','phase7PreInspection'];
+                                                        const P08_KEYS = ['phase8OfficialInspection','phase9Handover','phase10Maintenance'];
+                                                        const visibleKeys = project.stage === 'P08_工程完成' ? P08_KEYS : P07_KEYS;
+
+                                                        return (project?.ganttTimeline?.length > 0 
+                                                            ? project.ganttTimeline 
+                                                            : CONSTRUCTION_PHASES.map((p, idx) => ({ id: `default-${idx}`, key: p.key, name: p.label, duration: 5, isIncluded: true }))
+                                                        ).filter((p: any) => p.isIncluded && visibleKeys.includes(p.key)).map((phase: any) => {
                                                         const staticPhaseDef = CONSTRUCTION_PHASES.find(c => c.key === phase.key);
                                                         const fields = staticPhaseDef ? staticPhaseDef.fields : [];
                                                         const icon = staticPhaseDef ? staticPhaseDef.icon : '🚧';
@@ -1302,57 +1359,14 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                                 )}
                                                             </div>
                                                         );
-                                                    })}
+                                                    });
+                                                    })()}
                                                 </div>
                                             </CardContent>
                                         </Card>
                                     )}
 
-                                    {/* Widget: S03 Preliminary Quote Upload */}
-                                    {(STAGE_WIDGETS[project.stage] || []).includes('quote_upload') && (
-                                        <Card className="border border-indigo-200 shadow-sm bg-indigo-50/30">
-                                            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-                                                <CardTitle className="text-base font-bold flex items-center gap-2 text-indigo-700">
-                                                    <UploadCloud className="h-5 w-5 text-indigo-500" /> 報價單 / 企劃書上傳
-                                                </CardTitle>
-                                                {(isCurrentStageEditable || userRole === 'admin') && (
-                                                    <Button 
-                                                        size="sm" 
-                                                        className="h-8 gap-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm"
-                                                        onClick={() => { setForcedFileType('quotation'); fileInputRef.current?.click(); }}
-                                                        disabled={uploading}
-                                                    >
-                                                        {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} 上傳文件
-                                                    </Button>
-                                                )}
-                                            </CardHeader>
-                                            <CardContent className="px-6 pt-3 pb-6">
-                                                <p className="text-xs text-indigo-900/60 font-medium mb-3">請上傳 S03 階段的初步報價單或設計企劃書 (支援 PDF, Word, Excel)。上傳後會自動存入「文件檔案」頁籤。</p>
-                                                {project.files?.filter((f: any) => f.type === 'quotation').length > 0 ? (
-                                                    <div className="flex flex-col gap-2">
-                                                        {project.files.filter((f: any) => f.type === 'quotation').slice(0, 3).map((f: any) => (
-                                                            <div key={f.id} className="flex items-center gap-3 bg-white border border-indigo-100 p-2.5 rounded-lg shadow-sm">
-                                                                <FileText className="w-4 h-4 text-indigo-400" />
-                                                                <a href={f.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-indigo-800 hover:underline flex-1 truncate">
-                                                                    {f.name}
-                                                                </a>
-                                                                <span className="text-[10px] text-slate-400 font-mono">
-                                                                    {new Date(f.uploadDate).toLocaleDateString()}
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                        {project.files.filter((f: any) => f.type === 'quotation').length > 3 && (
-                                                            <p className="text-[10px] text-indigo-500 font-semibold px-2">及更多文件... 請前往「文件與圖則」頁籤查看。</p>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <div className="bg-white/50 border border-dashed border-indigo-200 rounded-lg p-4 text-center">
-                                                        <p className="text-[12px] font-semibold text-indigo-400">尚無報價單紀錄</p>
-                                                    </div>
-                                                )}
-                                            </CardContent>
-                                        </Card>
-                                    )}
+
 
                                     {/* Widget: 約見記錄 — S01-S05 */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('meetings') && (
@@ -1490,41 +1504,82 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                         </Card>
                                     )}
 
-                                    {/* Widget: 設計連結 — S02, S04 */}
+                                    {/* Widget: 設計圖連結 (Google Drive Links) — S02+ */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('design_links') && (
                                         <Card>
                                             <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
                                                 <CardTitle className="text-base font-bold flex items-center gap-2">
-                                                    <LinkIcon className="h-5 w-5 text-blue-500" /> 設計連結
+                                                    <LinkIcon className="h-5 w-5 text-blue-500" /> 設計圖連結 (Google Drive)
                                                 </CardTitle>
-                                                {canEditDesignLinks && (
+                                                {(canEditDesignLinks || isCurrentStageEditable || userRole === 'admin') && (
                                                     <Button variant="ghost" size="icon" onClick={saveDetails} disabled={savingDetails} className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md">
                                                         {savingDetails ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-4 w-4" />}
                                                     </Button>
                                                 )}
                                             </CardHeader>
                                             <CardContent className="space-y-4 px-6 pt-3 pb-6">
+                                                <p className="text-[11px] text-slate-400 font-medium leading-relaxed -mt-1">貼上 Google Drive 資料夾連結，統一管理報價單、平面圖及 3D 模型。</p>
+
+                                                {/* 報價單 / 企劃書連結 */}
                                                 <div className="space-y-2">
-                                                    <label className="text-[11px] font-semibold text-slate-500 tracking-wide">平面圖連結</label>
+                                                    <label className="text-[11px] font-semibold text-slate-500 tracking-wide flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                                                        報價單 / 企劃書連結
+                                                    </label>
                                                     <Input
-                                                        disabled={!canEditDesignLinks}
+                                                        disabled={!isCurrentStageEditable && !canEditDesignLinks && userRole !== 'admin'}
+                                                        value={quotationLink}
+                                                        onChange={e => setQuotationLink(e.target.value)}
+                                                        placeholder="https://drive.google.com/drive/folders/..."
+                                                        className="h-10 text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-indigo-500/20 disabled:opacity-50"
+                                                    />
+                                                    {project.quotationLink && (
+                                                        <a href={project.quotationLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 hover:underline mt-0.5 ml-1 transition-colors">
+                                                            <FileText className="w-3 h-3" /> 開啟報價單資料夾 ↗
+                                                        </a>
+                                                    )}
+                                                </div>
+
+                                                <div className="border-t border-slate-100" />
+
+                                                {/* 平面圖連結 */}
+                                                <div className="space-y-2">
+                                                    <label className="text-[11px] font-semibold text-slate-500 tracking-wide flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                                        平面圖連結
+                                                    </label>
+                                                    <Input
+                                                        disabled={!canEditDesignLinks && userRole !== 'admin'}
                                                         value={floorPlanLink}
                                                         onChange={e => setFloorPlanLink(e.target.value)}
-                                                        placeholder="https://drive.google.com/..."
+                                                        placeholder="https://drive.google.com/drive/folders/..."
                                                         className="h-10 text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:opacity-50"
                                                     />
-                                                    {project.floorPlanLink && <a href={project.floorPlanLink} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-blue-600 hover:underline inline-block mt-0.5 ml-1">前往連結 ↗</a>}
+                                                    {project.floorPlanLink && (
+                                                        <a href={project.floorPlanLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:underline mt-0.5 ml-1 transition-colors">
+                                                            <FileText className="w-3 h-3" /> 開啟平面圖資料夾 ↗
+                                                        </a>
+                                                    )}
                                                 </div>
+
+                                                {/* SketchUp 3D 連結 */}
                                                 <div className="space-y-2">
-                                                    <label className="text-[11px] font-semibold text-slate-500 tracking-wide">SketchUp 3D</label>
+                                                    <label className="text-[11px] font-semibold text-slate-500 tracking-wide flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                                        SketchUp 3D 模型
+                                                    </label>
                                                     <Input
-                                                        disabled={!canEditDesignLinks}
+                                                        disabled={!canEditDesignLinks && userRole !== 'admin'}
                                                         value={sketchUpLink}
                                                         onChange={e => setSketchUpLink(e.target.value)}
-                                                        placeholder="https://drive.google.com/..."
-                                                        className="h-9 text-xs bg-slate-50 border-slate-200/60 shadow-none focus-visible:ring-blue-500/20 disabled:opacity-50"
+                                                        placeholder="https://drive.google.com/drive/folders/..."
+                                                        className="h-10 text-xs bg-slate-100/80 hover:bg-slate-200/50 border-transparent transition-colors rounded-xl px-3 shadow-none focus-visible:ring-2 focus-visible:ring-emerald-500/20 disabled:opacity-50"
                                                     />
-                                                    {project.sketchUpLink && <a href={project.sketchUpLink} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-blue-600 hover:underline inline-block mt-0.5 ml-1">前往連結 ↗</a>}
+                                                    {project.sketchUpLink && (
+                                                        <a href={project.sketchUpLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 hover:underline mt-0.5 ml-1 transition-colors">
+                                                            <FileText className="w-3 h-3" /> 開啟 3D 模型資料夾 ↗
+                                                        </a>
+                                                    )}
                                                 </div>
                                             </CardContent>
                                         </Card>
@@ -1646,60 +1701,140 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                             </Card>
                         </TabsContent >
 
-                        {/* Tab: Photos */}
+                        {/* Tab: Photos — Folder-based Photo Management */}
                         <TabsContent value="photos" className="mt-0 outline-none">
                             <Card className="min-h-[500px]">
                                 <CardHeader className="flex flex-row items-center justify-between border-b">
                                     <div>
                                         <CardTitle className="text-xl font-bold tracking-tight">現場照片與影片相簿</CardTitle>
-                                        <CardDescription>紀錄工程前後及各種損耗細節</CardDescription>
+                                        <CardDescription>按工程階段分類管理，紀錄施工過程與驗收細節</CardDescription>
                                     </div>
                                     {(isCurrentStageEditable || userRole === 'admin') && (
-                                        <Button onClick={() => { setForcedFileType('photo'); photoInputRef.current?.click(); }} disabled={uploading}>
-                                            {uploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UploadCloud className="w-4 h-4 mr-2" />} 上傳媒體
-                                        </Button>
+                                        <div className="flex items-center gap-2">
+                                            <Select value={photoFolder} onValueChange={setPhotoFolder}>
+                                                <SelectTrigger className="h-9 w-[200px] text-xs bg-slate-50 border-slate-200 rounded-lg shadow-none">
+                                                    <span className="truncate font-semibold text-slate-600">
+                                                        {photoFolder === 'uncategorized' ? '📁 未分類' : CONSTRUCTION_PHASES.find(p => p.key === photoFolder)?.icon + ' ' + CONSTRUCTION_PHASES.find(p => p.key === photoFolder)?.label || photoFolder}
+                                                    </span>
+                                                </SelectTrigger>
+                                                <SelectContent className="border-slate-100 shadow-xl rounded-xl bg-white/95 backdrop-blur-md p-1">
+                                                    {CONSTRUCTION_PHASES.map(phase => (
+                                                        <SelectItem key={phase.key} value={phase.key} className="rounded-lg text-xs font-semibold focus:bg-slate-100/80 my-0.5 cursor-pointer py-2">
+                                                            <span className="flex items-center gap-2">{phase.icon} {phase.label}</span>
+                                                        </SelectItem>
+                                                    ))}
+                                                    <SelectItem value="uncategorized" className="rounded-lg text-xs font-semibold focus:bg-slate-100/80 my-0.5 cursor-pointer py-2">
+                                                        <span className="flex items-center gap-2">📁 未分類</span>
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Button onClick={() => { setForcedFileType('photo'); photoInputRef.current?.click(); }} disabled={uploading} className="h-9 gap-1.5 text-xs font-bold">
+                                                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} 上傳至此分類
+                                            </Button>
+                                        </div>
                                     )}
-
                                 </CardHeader>
                                 <CardContent className="p-6">
-
-                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                    {project.files.filter((f: any) => f.type === 'photo').map((photo: any) => (
-                                        <div key={photo.id} className="group relative aspect-square rounded-xl overflow-hidden bg-slate-100 border border-slate-200 hover:border-blue-300 transition-all shadow-sm hover:shadow-md">
-                                            <a href={photo.url} target="_blank" rel="noreferrer" className="block w-full h-full">
-                                                {photo.url.includes('.mp4') ? (
-                                                    <video src={photo.url} className="w-full h-full object-cover" muted />
-                                                ) : (
-                                                    <img src={photo.url} alt={photo.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                                )}
-                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end h-1/2">
-                                                    <p className="text-white text-[11px] font-medium line-clamp-2 leading-relaxed">{photo.name}</p>
+                                    {(() => {
+                                        const allPhotos = project.files.filter((f: any) => f.type === 'photo');
+                                        if (allPhotos.length === 0) {
+                                            return (
+                                                <div className="py-32 flex flex-col items-center justify-center text-center bg-white border border-[#E8E8ED] shadow-sm rounded-[24px]">
+                                                    <div className="w-16 h-16 bg-[#F5F5F7] rounded-[16px] border border-[#D1D1D6] flex items-center justify-center mb-5 rotate-3 hover:rotate-0 transition-transform">
+                                                        <ImageIcon className="w-8 h-8 text-[#86868B]" />
+                                                    </div>
+                                                    <h3 className="text-[16px] font-bold text-[#1D1D1F] tracking-wide mb-1.5">相簿是空的</h3>
+                                                    <p className="text-[13px] font-semibold text-[#86868B] max-w-[220px] leading-relaxed">
+                                                        目前還沒有上傳任何相片。<br/>請選擇分類後點擊上傳按鈕。
+                                                    </p>
                                                 </div>
-                                            </a>
-                                            {/* Delete button */}
-                                            {(isCurrentStageEditable || userRole === 'admin') && (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteFile(photo.id, photo.name); }}
-                                                    className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 backdrop-blur-sm text-white/80 hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100 z-10"
-                                                    title="刪除"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
-                                    {project.files.filter((f: any) => f.type === 'photo').length === 0 && (
-                                        <div className="col-span-full py-32 flex flex-col items-center justify-center text-center bg-white border border-[#E8E8ED] shadow-sm rounded-[24px]">
-                                            <div className="w-16 h-16 bg-[#F5F5F7] rounded-[16px] border border-[#D1D1D6] flex items-center justify-center mb-5 rotate-3 hover:rotate-0 transition-transform">
-                                                <ImageIcon className="w-8 h-8 text-[#86868B]" />
+                                            );
+                                        }
+
+                                        // Build folder groups: 10 phases + uncategorized
+                                        const folderGroups = [
+                                            ...CONSTRUCTION_PHASES.map(phase => ({
+                                                key: phase.key,
+                                                label: phase.label,
+                                                icon: phase.icon,
+                                                photos: allPhotos.filter((p: any) => p.folder === phase.key),
+                                            })),
+                                            {
+                                                key: 'uncategorized',
+                                                label: '未分類',
+                                                icon: '📁',
+                                                photos: allPhotos.filter((p: any) => !p.folder || p.folder === 'uncategorized'),
+                                            },
+                                        ].filter(g => g.photos.length > 0);
+
+                                        return (
+                                            <div className="space-y-4">
+                                                {/* Summary bar */}
+                                                <div className="flex items-center gap-3 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5">
+                                                    <ImageIcon className="w-4 h-4 text-slate-400" />
+                                                    共 {allPhotos.length} 張照片/影片，分佈於 {folderGroups.length} 個分類
+                                                </div>
+
+                                                {folderGroups.map(folder => (
+                                                    <div key={folder.key} className="border border-slate-200 bg-white rounded-2xl overflow-hidden shadow-sm">
+                                                        {/* Folder Header */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setExpandedPhases(prev => prev.includes(`photo-${folder.key}`) ? prev.filter(k => k !== `photo-${folder.key}`) : [...prev, `photo-${folder.key}`])}
+                                                            className="w-full flex items-center justify-between px-5 py-3.5 bg-slate-50/80 hover:bg-slate-100/80 transition-colors border-b border-slate-100 text-left"
+                                                        >
+                                                            <div className="flex items-center gap-2.5">
+                                                                <span className="text-[16px]">{folder.icon}</span>
+                                                                <span className="text-[13px] font-bold text-slate-800">{folder.label}</span>
+                                                                <Badge variant="outline" className="ml-1 bg-white text-slate-500 border-slate-200 text-[10px] font-bold px-1.5">
+                                                                    {folder.photos.length}
+                                                                </Badge>
+                                                            </div>
+                                                            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${expandedPhases.includes(`photo-${folder.key}`) ? 'rotate-180' : ''}`} />
+                                                        </button>
+
+                                                        {/* Folder Photos Grid */}
+                                                        {expandedPhases.includes(`photo-${folder.key}`) && (
+                                                            <div className="p-4">
+                                                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                                                    {folder.photos
+                                                                        .sort((a: any, b: any) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())
+                                                                        .map((photo: any) => (
+                                                                        <div key={photo.id} className="group relative rounded-xl overflow-hidden bg-white border border-slate-200 hover:border-blue-300 transition-all shadow-sm hover:shadow-md">
+                                                                            <a href={photo.url} target="_blank" rel="noreferrer" className="block w-full aspect-square relative overflow-hidden">
+                                                                                {photo.url?.includes('.mp4') || photo.url?.includes('.mov') ? (
+                                                                                    <video src={photo.url} className="w-full h-full object-cover" muted />
+                                                                                ) : (
+                                                                                    <img src={photo.url} alt={photo.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                                                )}
+                                                                                {/* Delete button */}
+                                                                                {(isCurrentStageEditable || userRole === 'admin') && (
+                                                                                    <button
+                                                                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteFile(photo.id, photo.name); }}
+                                                                                        className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 backdrop-blur-sm text-white/80 hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100 z-10"
+                                                                                        title="刪除"
+                                                                                    >
+                                                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                                                    </button>
+                                                                                )}
+                                                                            </a>
+                                                                            {/* Title + Timestamp — always visible */}
+                                                                            <div className="px-2.5 py-2 border-t border-slate-100">
+                                                                                <p className="text-[11px] font-semibold text-slate-700 line-clamp-1 leading-snug">{photo.name}</p>
+                                                                                <p className="text-[9px] font-medium text-slate-400 mt-0.5">
+                                                                                    {photo.uploadedAt ? new Date(photo.uploadedAt).toLocaleString('zh-HK', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
                                             </div>
-                                            <h3 className="text-[16px] font-bold text-[#1D1D1F] tracking-wide mb-1.5">相簿是空的</h3>
-                                            <p className="text-[13px] font-semibold text-[#86868B] max-w-[220px] leading-relaxed">
-                                                目前還沒有上傳任何相片。<br/>請點擊右上方按鈕上傳紀錄。
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
+                                        );
+                                    })()}
                                 </CardContent>
                             </Card>
                         </TabsContent >

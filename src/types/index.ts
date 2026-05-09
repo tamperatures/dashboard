@@ -15,6 +15,7 @@ export interface GanttPhase {
     name: string; // e.g. "打拆工程"
     duration: number; // working days
     isIncluded: boolean;
+    color?: string; // custom hex color override for the Gantt bar
     manualStartDate?: string; // override start date
     calculatedStartDate?: string; // auto calculated start date
     calculatedEndDate?: string; // auto calculated end date

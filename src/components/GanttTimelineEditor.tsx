@@ -4,7 +4,7 @@ import { Customer } from '@/types';
 import { X, Save, ArrowUp, ArrowDown, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { getNextWorkingDay, calculateEndDate } from '@/lib/dateUtils';
 import { parseISO, format, addDays } from 'date-fns';
-import { CONSTRUCTION_PHASES } from '@/lib/constants';
+import { CONSTRUCTION_PHASES, PHASE_COLORS } from '@/lib/constants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface GanttTimelineEditorProps {
@@ -200,6 +200,8 @@ export function GanttTimelineEditor({ project, isOpen, onClose, onSave }: GanttT
                     {timeline.map((st, idx) => {
                         if (tradeFilter !== 'all' && !st.name.includes(tradeFilter)) return null;
                         const phaseData = CONSTRUCTION_PHASES.find(p => p.key === st.key);
+                        const defaultColor = PHASE_COLORS[st.key] || '#0071E3';
+                        const currentColor = st.color || defaultColor;
                         return (
                         <div key={st.id} className={`grid grid-cols-1 md:grid-cols-12 gap-4 items-center p-4 rounded-[12px] border transition-all ${st.isIncluded ? 'bg-white border-transparent hover:bg-slate-50 hover:shadow-sm group' : 'bg-[#F5F5F7] border border-dashed border-[#D1D1D6] opacity-60'}`}>
                             <div className="md:col-span-5 flex items-center gap-3 min-w-0">
@@ -221,6 +223,16 @@ export function GanttTimelineEditor({ project, isOpen, onClose, onSave }: GanttT
                                         title="包含 / 排除此階"
                                     />
                                 </div>
+                                {/* Color picker */}
+                                <label className="relative shrink-0 cursor-pointer group/color" title="自訂顏色">
+                                    <div className="w-5 h-5 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200 hover:ring-2 hover:ring-blue-300 transition-all" style={{ backgroundColor: currentColor }} />
+                                    <input
+                                        type="color"
+                                        value={currentColor}
+                                        onChange={(e) => handlePhaseChange(st.id, 'color', e.target.value)}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    />
+                                </label>
                                 <input
                                     type="text"
                                     value={st.name}

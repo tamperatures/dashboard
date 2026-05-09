@@ -21,11 +21,19 @@ import Link from 'next/link';
 
 const DEFAULT_PHASES = CONSTRUCTION_PHASES.map(p => p.label);
 
-// Dynamically map labels to color classes based on the source of truth
-const PHASE_COLORS = CONSTRUCTION_PHASES.reduce((acc, phase) => {
-  acc[phase.label] = CONSTANT_PHASE_COLORS[phase.key] || 'bg-[#0071E3]';
+// Dynamically map labels to hex color values based on the source of truth
+const PHASE_COLORS_BY_LABEL = CONSTRUCTION_PHASES.reduce((acc, phase) => {
+  acc[phase.label] = CONSTANT_PHASE_COLORS[phase.key] || '#0071E3';
   return acc;
 }, {} as Record<string, string>);
+
+// Resolve color for a gantt task: custom override → key lookup → name lookup → fallback
+function resolveBarColor(st: any): string {
+  if (st.color) return st.color; // user custom color
+  if (st.key && CONSTANT_PHASE_COLORS[st.key]) return CONSTANT_PHASE_COLORS[st.key]; // key-based (stable)
+  if (st.name && PHASE_COLORS_BY_LABEL[st.name]) return PHASE_COLORS_BY_LABEL[st.name]; // name-based (legacy)
+  return '#0071E3'; // fallback blue
+}
 
 interface AdvancedGanttChartProps {
   projects: any[]; // Supports Mongoose Document format (Customer / Project)
@@ -147,12 +155,11 @@ export function AdvancedGanttChart({ projects }: AdvancedGanttChartProps) {
           <div className="flex items-center mr-1">
             <span className="text-[#86868B] tracking-wider uppercase">圖例 (Legend):</span>
           </div>
-          {DEFAULT_PHASES.map(p => {
-             // Fallback to indigo if not listed
-             const colorClass = PHASE_COLORS[p] || 'bg-indigo-500';
+          {DEFAULT_PHASES.map((p, idx) => {
+             const hexColor = CONSTANT_PHASE_COLORS[CONSTRUCTION_PHASES[idx]?.key] || '#6366f1';
              return (
               <div key={p} className="flex items-center gap-1.5">
-                <div className={`w-3 h-3 rounded-[3px] ${colorClass}`}></div>
+                <div className="w-3 h-3 rounded-[3px]" style={{ backgroundColor: hexColor }}></div>
                 <span className="text-slate-600">{p}</span>
               </div>
             );
@@ -365,16 +372,17 @@ export function AdvancedGanttChart({ projects }: AdvancedGanttChartProps) {
                         const stLeft = stOffsetDays * CELL_WIDTH;
                         const stWidth = stDurationDays * CELL_WIDTH;
                         
-                        const stColor = PHASE_COLORS[st.name] || 'bg-[#0071E3]';
+                        const stColor = resolveBarColor(st);
 
                         return (
                           <div
                             key={st.id}
-                            className={`absolute h-[22px] rounded-[6px] shadow-sm overflow-hidden group/stbar ${stColor} border-r border-white/20 last:border-r-0 hover:ring-2 hover:ring-white/50 hover:z-10 transition-all cursor-default select-none`}
+                            className={`absolute h-[22px] rounded-[6px] shadow-sm overflow-hidden group/stbar border-r border-white/20 last:border-r-0 hover:ring-2 hover:ring-white/50 hover:z-10 transition-all cursor-default select-none`}
                             style={{
                               top: `${ROW_PADDING_TOP + trackIndex * TRACK_HEIGHT}px`,
                               left: `${stLeft}px`,
                               width: `${stWidth}px`,
+                              backgroundColor: stColor,
                             }}
                           >
                             <div className="absolute inset-0 flex items-center justify-center px-2 text-[10px] font-bold tracking-wide text-white truncate drop-shadow-sm">

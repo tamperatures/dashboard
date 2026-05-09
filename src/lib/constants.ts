@@ -75,14 +75,14 @@ export const CONSTRUCTION_PHASES = [
 ];
 
 export const PHASE_COLORS: Record<string, string> = {
-  'phase1SitePrep': 'bg-slate-500',
-  'phase2Demolition': 'bg-red-600',
-  'phase3Plumbing': 'bg-blue-500',
-  'phase4Masonry': 'bg-orange-600',
-  'phase5Carpentry': 'bg-emerald-500',
-  'phase6Installation': 'bg-cyan-500',
-  'phase7PreInspection': 'bg-violet-500',
-  'phase8OfficialInspection': 'bg-fuchsia-500',
-  'phase9Handover': 'bg-amber-500',
-  'phase10Maintenance': 'bg-rose-500',
+  'phase1SitePrep': '#64748b',
+  'phase2Demolition': '#dc2626',
+  'phase3Plumbing': '#3b82f6',
+  'phase4Masonry': '#ea580c',
+  'phase5Carpentry': '#10b981',
+  'phase6Installation': '#06b6d4',
+  'phase7PreInspection': '#8b5cf6',
+  'phase8OfficialInspection': '#d946ef',
+  'phase9Handover': '#f59e0b',
+  'phase10Maintenance': '#f43f5e',
 };

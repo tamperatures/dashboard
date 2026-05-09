@@ -21,6 +21,13 @@ const ROUTE_MAP: Record<string, { label: string; parent?: string }> = {
     '/change-password': { label: '更改密碼', parent: '/settings' },
 };
 
+/* ───────── Stage → Department Map ───────── */
+const STAGE_DEPT_MAP: Record<string, string> = {
+    'S01_客戶查詢': '推廣部', 'S02_見客前準備': '設計部', 'S03_初步報價': '銷售部',
+    'S04_見客後跟進': '設計部', 'S05_後續會面': '銷售部',
+    'P06_工程啟動': '工程部', 'P07_工程進行中': '工程部', 'P08_工程完成': '工程部',
+};
+
 /* ───────── Notification Types ───────── */
 interface Notification {
     id: string;
@@ -28,8 +35,9 @@ interface Notification {
     description: string;
     time: string;
     read: boolean;
-    type: 'stage' | 'file' | 'system';
+    type: 'handoff' | 'stage' | 'file' | 'system';
     projectId?: string;
+    deptBadge?: string;
 }
 
 /* ───────── Search Result ───────── */
@@ -143,7 +151,9 @@ export function Header() {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    // ── Load Notifications (from recent project logs) ──
+    // ── Load Notifications (department-aware, from project data) ──
+    const userDepts: string[] = userData?.departments || (userData?.department ? [userData.department] : []);
+
     useEffect(() => {
         const loadNotifications = async () => {
             try {
@@ -153,26 +163,53 @@ export function Header() {
                 const allNotifs: Notification[] = [];
 
                 for (const project of (data.projects || [])) {
-                    const logs = project.stageLogs || [];
-                    for (const log of logs.slice(-5)) {
+                    const projectDept = STAGE_DEPT_MAP[project.stage] || '';
+
+                    // 1. Handoff notifications: project has unreadDepartments matching user's dept
+                    const unreadDepts: string[] = project.unreadDepartments || [];
+                    const myUnread = unreadDepts.filter((d: string) => userDepts.includes(d));
+                    if (myUnread.length > 0) {
                         allNotifs.push({
-                            id: log.id,
+                            id: `handoff-${project.id}`,
                             title: `${project.projectCode} — ${project.clientName}`,
-                            description: log.description,
-                            time: log.timestamp,
+                            description: `新交接待處理 — 此項目已移交至您的部門（${myUnread.join('、')}），請盡快跟進。`,
+                            time: project.updatedAt || new Date().toISOString(),
                             read: false,
-                            type: log.description?.includes('檔案') ? 'file' : 'stage',
+                            type: 'handoff',
                             projectId: project.id,
+                            deptBadge: myUnread[0],
                         });
                     }
+
+                    // 2. Recent log entries — only show if relevant to user's dept or admin
+                    const logs = project.stageLogs || [];
+                    const isRelevant = userRole === 'admin' || userDepts.includes(projectDept);
+                    if (isRelevant) {
+                        for (const log of logs.slice(-3)) {
+                            allNotifs.push({
+                                id: log.id,
+                                title: `${project.projectCode} — ${project.clientName}`,
+                                description: log.description,
+                                time: log.timestamp,
+                                read: myUnread.length === 0, // unread only if no handoff pending
+                                type: log.description?.includes('檔案') ? 'file' : 'stage',
+                                projectId: project.id,
+                                deptBadge: projectDept,
+                            });
+                        }
+                    }
                 }
-                // Sort by time descending, take latest 20
-                allNotifs.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-                setNotifications(allNotifs.slice(0, 20));
+                // Sort: handoff first, then by time descending
+                allNotifs.sort((a, b) => {
+                    if (a.type === 'handoff' && b.type !== 'handoff') return -1;
+                    if (a.type !== 'handoff' && b.type === 'handoff') return 1;
+                    return new Date(b.time).getTime() - new Date(a.time).getTime();
+                });
+                setNotifications(allNotifs.slice(0, 25));
             } catch { /* ignore */ }
         };
         loadNotifications();
-    }, []);
+    }, [userData, userRole]);
 
     const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -332,7 +369,11 @@ export function Header() {
                         >
                             <Bell className="w-[18px] h-[18px]" strokeWidth={2} />
                             {unreadCount > 0 && (
-                                <span className="absolute top-[4px] right-[4px] w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white">
+                                <span className="absolute top-[4px] right-[4px] flex h-2.5 w-2.5">
+                                    {notifications.some(n => n.type === 'handoff' && !n.read) && (
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                                    )}
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border-2 border-white" />
                                 </span>
                             )}
                         </button>
@@ -367,11 +408,32 @@ export function Header() {
                                                         }
                                                         setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
                                                     }}
-                                                    className={`w-full flex flex-col px-4 py-3 text-left transition-colors hover:bg-slate-50 ${!notif.read ? 'bg-blue-50/30' : ''}`}
+                                                    className={`w-full flex flex-col px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
+                                                        notif.type === 'handoff' && !notif.read
+                                                            ? 'bg-rose-50/50 border-l-2 border-rose-400'
+                                                            : !notif.read
+                                                                ? 'bg-blue-50/30 border-l-2 border-blue-400'
+                                                                : 'border-l-2 border-transparent'
+                                                    }`}
                                                 >
                                                     <div className="flex items-center justify-between mb-1">
-                                                        <p className="text-[13px] font-bold text-slate-800 truncate pr-4">{notif.title}</p>
-                                                        {!notif.read && <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0 shadow-sm" />}
+                                                        <div className="flex items-center gap-2 min-w-0 pr-2">
+                                                            <p className="text-[13px] font-bold text-slate-800 truncate">{notif.title}</p>
+                                                            {notif.type === 'handoff' && (
+                                                                <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-600 border border-rose-200">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                                                    新交接
+                                                                </span>
+                                                            )}
+                                                            {notif.deptBadge && notif.type !== 'handoff' && (
+                                                                <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                                                                    {notif.deptBadge}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {!notif.read && (
+                                                            <div className={`w-2 h-2 rounded-full shrink-0 shadow-sm ${notif.type === 'handoff' ? 'bg-rose-500' : 'bg-blue-500'}`} />
+                                                        )}
                                                     </div>
                                                     <p className="text-[12px] font-medium text-slate-500 line-clamp-2 leading-relaxed">{notif.description}</p>
                                                     <span className="text-[10px] font-semibold text-slate-400 mt-2 block">{formatTimeAgo(notif.time)}</span>
