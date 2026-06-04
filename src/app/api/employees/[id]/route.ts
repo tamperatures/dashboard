@@ -87,7 +87,20 @@ export async function PUT(
         updates.departments = [department];
     }
     if (password) {
-        await adminAuth.updateUser(id, { password }).catch(() => null);
+        // Only admins can reset another user's password
+        if (currentUserReq.role !== 'admin' && currentUserReq.id !== id) {
+            return NextResponse.json({ error: '只有管理員可以重設其他用戶的密碼' }, { status: 403 });
+        }
+        try {
+            await adminAuth.updateUser(id, { password });
+            // Mark that user must change password on next login (if reset by admin)
+            if (currentUserReq.id !== id) {
+                updates.mustChangePassword = true;
+            }
+        } catch (err: any) {
+            console.error('Failed to update password in Firebase Auth:', err);
+            return NextResponse.json({ error: '密碼重設失敗: ' + (err.message || '未知錯誤') }, { status: 500 });
+        }
     }
 
     await userRef.update(updates);

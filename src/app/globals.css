@@ -76,20 +76,43 @@
 }
 
 @media print {
+  /* Hide everything except the printable content */
   body * {
     visibility: hidden;
   }
-  #printable-timeline, #printable-timeline * {
-    visibility: visible;
+
+  /* Support both the old timeline ID and the new Gantt container */
+  #printable-timeline, #printable-timeline *,
+  #gantt-chart-container, #gantt-chart-container * {
+    visibility: visible !important;
   }
-  #printable-timeline {
+
+  #printable-timeline,
+  #gantt-chart-container {
     position: absolute;
     left: 0;
     top: 0;
     width: 100vw;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
   }
+
+  /* Ensure the scrollable Gantt body is fully visible in print */
+  #gantt-chart-container > div {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Remove sidebar/header chrome */
+  nav, header, aside,
+  [data-sidebar], [data-topbar] {
+    display: none !important;
+  }
+
   @page {
     size: landscape;
-    margin: 10mm;
+    margin: 8mm;
   }
 }

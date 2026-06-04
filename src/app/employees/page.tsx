@@ -514,13 +514,15 @@ export default function EmployeesPage() {
                                     <Input type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} required placeholder="email@tpt.com" className="pl-10" />
                                 </div>
                             </div>
+                            {!editingUser && (
                             <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-[#86868B] uppercase tracking-wider">{editingUser ? '新密碼 (留空不變)' : '密碼 *'}</label>
+                                <label className="text-xs font-semibold text-[#86868B] uppercase tracking-wider">密碼 *</label>
                                 <div className="relative">
                                     <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#86868B]" />
-                                    <Input type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} required={!editingUser} placeholder="••••••••" className="pl-10" />
+                                    <Input type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} required placeholder="••••••••" className="pl-10" />
                                 </div>
                             </div>
+                            )}
                             <div className="space-y-2">
                                 <label className="text-xs font-semibold text-[#86868B] uppercase tracking-wider">角色權限</label>
                                 <div className="grid grid-cols-2 gap-2">

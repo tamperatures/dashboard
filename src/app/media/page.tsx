@@ -21,6 +21,8 @@ import {
     Download,
     Folder,
     FileText,
+    Info,
+    ExternalLink,
 } from 'lucide-react';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/toast';
@@ -183,6 +185,21 @@ export default function MediaPage() {
                     )}
                 </div>
 
+                {/* Info Banner */}
+                {!activeFolder && (
+                    <div className="flex items-start gap-3 p-4 rounded-2xl bg-[#0071E3]/5 border border-[#0071E3]/10">
+                        <div className="w-8 h-8 rounded-xl bg-[#0071E3]/10 flex items-center justify-center shrink-0 mt-0.5">
+                            <Info className="w-4 h-4 text-[#0071E3]" />
+                        </div>
+                        <div>
+                            <p className="text-[13px] font-semibold text-[#1D1D1F]">跨專案文件瀏覽器</p>
+                            <p className="text-[12px] text-[#86868B] mt-0.5 leading-relaxed">
+                                此頁面集中顯示所有專案的文件與照片。所有檔案均已連結至對應專案，你亦可在專案詳情頁直接存取和管理。
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Content */}
                 {isLoading ? (
                     <div className="flex items-center justify-center py-20">
@@ -241,6 +258,13 @@ export default function MediaPage() {
                                         <CardContent className="p-4">
                                             <p className="text-[15px] font-semibold text-[#1D1D1F] truncate">{folder.projectCode}</p>
                                             <p className="text-[13px] text-[#86868B] mt-0.5 truncate">{folder.clientName} · {folder.estate}</p>
+                                            <a
+                                                href={`/projects/${folder.id}`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0071E3] hover:underline mt-2 transition-colors"
+                                            >
+                                                前往專案 <ExternalLink className="w-3 h-3" />
+                                            </a>
                                         </CardContent>
                                     </Card>
                                 );

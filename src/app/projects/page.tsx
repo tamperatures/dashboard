@@ -38,6 +38,7 @@ interface Project {
     status?: string;
     pendingStageRequest?: any;
     unreadDepartments?: string[];
+    archived?: boolean;
 }
 
 const STAGES = [
@@ -119,7 +120,7 @@ function ProjectsPageContent() {
     const [selectedStage, setSelectedStage] = useState<string | null>(null);
     const [selectedTechPhase, setSelectedTechPhase] = useState<string | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
-    const [statusTab, setStatusTab] = useState<'Active' | 'Lost'>('Active');
+    const [statusTab, setStatusTab] = useState<'Active' | 'Lost' | 'Archived'>('Active');
     const searchParams = useSearchParams();
 
     useEffect(() => {
@@ -292,7 +293,14 @@ function ProjectsPageContent() {
         }
     };
 
-    const viewableProjects = projects.filter(p => statusTab === 'Active' ? p.status !== 'Lost' : p.status === 'Lost');
+    // Tab filtering: Active excludes both Lost & Archived; Lost shows status==='Lost' only;
+    // Archived shows projects with archived===true regardless of status (#8)
+    const viewableProjects = projects.filter(p => {
+        if (statusTab === 'Archived') return (p as any).archived === true;
+        if (statusTab === 'Lost') return p.status === 'Lost' && !(p as any).archived;
+        // Active
+        return p.status !== 'Lost' && !(p as any).archived;
+    });
 
     const filteredByStage = selectedStage ? viewableProjects.filter(p => p.stage === selectedStage) : viewableProjects;
     
@@ -321,9 +329,10 @@ function ProjectsPageContent() {
                     <p className="text-[17px] text-[#86868B] mt-2 max-w-xl">
                         追蹤所有裝修工程進度、工程狀態及跟進項目，確保每項工程如期進行。
                     </p>
-                    <div className="mt-6 flex items-center gap-2">
+                    <div className="mt-6 flex items-center gap-2 flex-wrap">
                         <button onClick={() => setStatusTab('Active')} className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${statusTab === 'Active' ? 'bg-white text-black' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>活躍項目</button>
-                        <button onClick={() => setStatusTab('Lost')} className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${statusTab === 'Lost' ? 'bg-white text-black' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>歸檔 / 未成交</button>
+                        <button onClick={() => setStatusTab('Lost')} className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${statusTab === 'Lost' ? 'bg-white text-black' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>未成交</button>
+                        <button onClick={() => setStatusTab('Archived')} className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${statusTab === 'Archived' ? 'bg-white text-black' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>📦 已歸檔</button>
                     </div>
                 </div>
                 <button

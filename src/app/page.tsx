@@ -93,11 +93,12 @@ export default function Dashboard() {
     } catch { }
   };
 
-  /* ── Derived data ── */
-  const engineeringProjects = projects.filter(p => ['P06_工程啟動', 'P07_工程進行中'].includes(p.stage));
-  const completedThisMonth = projects.filter(p => p.stage === 'P08_工程完成');
-  const pendingQuotes = projects.filter(p => ['S01_客戶查詢', 'S02_見客前準備', 'S03_初步報價', 'S04_見客後跟進', 'S05_後續會面'].includes(p.stage));
-  const totalBudget = projects.reduce((sum, p) => sum + (p.budget || 0), 0);
+  /* ── Derived data — archived projects are excluded from active KPIs (#8) ── */
+  const activeProjects = projects.filter(p => !(p as any).archived);
+  const engineeringProjects = activeProjects.filter(p => ['P06_工程啟動', 'P07_工程進行中'].includes(p.stage));
+  const completedThisMonth = activeProjects.filter(p => p.stage === 'P08_工程完成');
+  const pendingQuotes = activeProjects.filter(p => ['S01_客戶查詢', 'S02_見客前準備', 'S03_初步報價', 'S04_見客後跟進', 'S05_後續會面'].includes(p.stage));
+  const totalBudget = activeProjects.reduce((sum, p) => sum + (p.budget || 0), 0);
 
   const todayDate = new Date();
   todayDate.setHours(0, 0, 0, 0);
@@ -147,7 +148,7 @@ export default function Dashboard() {
   const stageData = Object.entries(projects.reduce<Record<string, number>>((acc, p) => { acc[p.stage] = (acc[p.stage] || 0) + 1; return acc; }, {})).map(([name, value]) => ({ name: STAGE_LABELS[name] || name, value, color: STAGE_COLORS[name] || '#86868B' }));
   const hasData = projects.length > 0;
 
-  const KpiCard = ({ label, value, icon: Icon, bgClass }: { label: string; value: string | number; icon: React.ElementType; bgClass: string }) => (
+  const KpiCard = ({ label, value, icon: Icon, bgClass, hint }: { label: string; value: string | number; icon: React.ElementType; bgClass: string; hint?: string }) => (
     <Card className="hover:shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] transition-shadow border-none bg-white rounded-[12px]">
       <CardContent className="p-4 sm:p-6 flex flex-row items-center gap-4 sm:gap-5">
         <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shrink-0 ${bgClass}`}>
@@ -156,6 +157,7 @@ export default function Dashboard() {
         <div className="min-w-0">
           <p className="text-[12px] font-medium text-[#86868B] uppercase tracking-wider truncate">{label}</p>
           <p className="apple-display text-[24px] sm:text-[32px] font-semibold text-[#1D1D1F] tracking-tight mt-0.5 truncate">{value}</p>
+          {hint && <p className="text-[10px] text-[#86868B] font-medium mt-0.5 truncate">{hint}</p>}
         </div>
       </CardContent>
     </Card>
@@ -198,7 +200,7 @@ export default function Dashboard() {
           <motion.div variants={item} className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard label="即將開工" value={upcomingEngineering} icon={FolderKanban} bgClass="bg-[#F5F5F7] text-[#1D1D1F]" />
             <KpiCard label="施工中項目" value={activeEngineering} icon={HardHat} bgClass="bg-[#F5F5F7] text-[#1D1D1F]" />
-            <KpiCard label="延誤項目" value={delayedProjects} icon={Clock} bgClass={delayedProjects > 0 ? "bg-red-50 text-red-600" : "bg-[#F5F5F7] text-[#1D1D1F]"} />
+            <KpiCard label="延誤項目" value={delayedProjects} icon={Clock} bgClass={delayedProjects > 0 ? "bg-red-50 text-red-600" : "bg-[#F5F5F7] text-[#1D1D1F]"} hint="工程完結日已過但進度未達 100%" />
             <KpiCard label="已完工" value={completedThisMonth.length} icon={CheckSquare} bgClass="bg-[#F5F5F7] text-[#1D1D1F]" />
           </motion.div>
 

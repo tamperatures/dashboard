@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-    Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Inbox, Loader2, Plus, Flag, Briefcase, Filter
+    Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Inbox, Loader2, Plus, Flag, Briefcase, Filter, ExternalLink, X
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useToast } from '@/components/ui/toast';
@@ -88,6 +88,10 @@ export default function CalendarPage() {
     });
     const [saving, setSaving] = useState(false);
     const [deptFilter, setDeptFilter] = useState<DeptFilter>('all');
+    // Event detail modal state
+    const [selectedEvent, setSelectedEvent] = useState<TaskEvent | null>(null);
+    // Expanded day state for "+N more" overflow
+    const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set());
 
     useEffect(() => {
         fetchData();
@@ -553,7 +557,7 @@ export default function CalendarPage() {
                                         <div
                                             key={i}
                                             onClick={() => inMonth && setSelectedDay(dayNum)}
-                                            className={`min-h-[120px] p-2 border-r border-b border-slate-100 cursor-pointer overflow-hidden transition-all ${!inMonth ? 'bg-slate-50/60' : 'bg-white hover:bg-slate-50/50'} ${selected ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/10' : ''}`}
+                                            className={`min-h-[140px] p-2 border-r border-b border-slate-100 cursor-pointer transition-all ${!inMonth ? 'bg-slate-50/60' : 'bg-white hover:bg-slate-50/50'} ${selected ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/10' : ''}`}
                                         >
                                             {inMonth && (
                                                 <div className="h-full flex flex-col">
@@ -562,51 +566,83 @@ export default function CalendarPage() {
                                                     </span>
 
                                                     {/* Events List for Day */}
-                                                    <div className="flex-1 space-y-1 overflow-visible pr-0 custom-scrollbar mt-1">
-                                                        {events.map((e, j) => {
-                                                            if (e.type === 'spacer') {
-                                                                return <div key={e.id} className="h-[22px] min-h-[22px] w-full" />;
-                                                            }
-                                                            if (e.type === 'gantt_span') {
-                                                                const isStartDay = e.spanStatus === 'start';
-                                                                const isEndDay = e.spanStatus === 'end';
-                                                                const showText = isStartDay; // Only show text on the very first day
-                                                                
-                                                                const leftMargin = isStartDay ? '0' : '-8px';
-                                                                const rightMargin = isEndDay ? '0' : '-13px';
-                                                                const radius = isStartDay && isEndDay ? 'rounded-md' : isStartDay ? 'rounded-l-md rounded-r-none' : isEndDay ? 'rounded-l-none rounded-r-md' : 'rounded-none';
-                                                                const borderStyle = isStartDay ? 'border-l-[3px] border-blue-500' : 'border-l-0';
-                                                                
-                                                                return (
-                                                                    <div key={e.id} className="relative z-10" style={{ marginLeft: leftMargin, marginRight: rightMargin }}>
-                                                                        <div className={`h-[22px] flex items-center ${radius} ${borderStyle} bg-blue-500/15 hover:bg-blue-500/25 transition-colors cursor-pointer`}>
-                                                                            {showText && (
-                                                                                <span className="text-[10px] font-semibold text-blue-700 pl-1.5 truncate select-none tracking-[0.01em]">
-                                                                                    {e.title}
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            }
-                                                            if (e.type === 'gantt_single') {
-                                                                return (
-                                                                    <div key={e.id} className="h-[22px] flex items-center rounded-md border-l-[3px] border-blue-500 bg-blue-500/15 hover:bg-blue-500/25 transition-colors cursor-pointer relative z-10">
-                                                                        <span className="text-[10px] font-semibold text-blue-700 pl-1.5 truncate select-none tracking-[0.01em]">{e.title}</span>
-                                                                    </div>
-                                                                );
-                                                            }
-
-                                                            const style = EVENT_STYLES[e.type] || EVENT_STYLES.task;
-                                                            const time = formatTime(e.date);
-                                                            const displayTitle = time ? `${time} ${e.title}` : e.title;
+                                                    <div className="flex-1 space-y-1 overflow-hidden pr-0 custom-scrollbar mt-1">
+                                                        {(() => {
+                                                            const isDayExpanded = expandedDays.has(dayNum);
+                                                            const MAX_VISIBLE = 3;
+                                                            const visibleEvents = isDayExpanded ? events : events.slice(0, MAX_VISIBLE);
+                                                            const hiddenCount = events.length - MAX_VISIBLE;
                                                             return (
-                                                                <div key={j} className={`flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1.5 rounded-lg truncate border ${style.bg} ${style.text} border-${style.text.replace('text-', '')}/15 shadow-sm`}>
-                                                                    <style.icon className="w-3 h-3 shrink-0 opacity-80" />
-                                                                    <span className="truncate">{e.status === 'completed' ? <span className="line-through opacity-70">{displayTitle}</span> : displayTitle}</span>
-                                                                </div>
+                                                                <>
+                                                                    {visibleEvents.map((e, j) => {
+                                                                        if (e.type === 'spacer') {
+                                                                            return <div key={e.id} className="h-[22px] min-h-[22px] w-full" />;
+                                                                        }
+                                                                        if (e.type === 'gantt_span') {
+                                                                            const isStartDay = e.spanStatus === 'start';
+                                                                            const isEndDay = e.spanStatus === 'end';
+                                                                            const showText = isStartDay;
+                                                                            
+                                                                            const leftMargin = isStartDay ? '0' : '-8px';
+                                                                            const rightMargin = isEndDay ? '0' : '-13px';
+                                                                            const radius = isStartDay && isEndDay ? 'rounded-md' : isStartDay ? 'rounded-l-md rounded-r-none' : isEndDay ? 'rounded-l-none rounded-r-md' : 'rounded-none';
+                                                                            const borderStyle = isStartDay ? 'border-l-[3px] border-blue-500' : 'border-l-0';
+                                                                            
+                                                                            return (
+                                                                                <div key={e.id} className="relative z-10" style={{ marginLeft: leftMargin, marginRight: rightMargin }} onClick={(ev) => { ev.stopPropagation(); setSelectedEvent(e); }}>
+                                                                                    <div className={`h-[22px] flex items-center ${radius} ${borderStyle} bg-blue-500/15 hover:bg-blue-500/25 transition-colors cursor-pointer`}>
+                                                                                        {showText && (
+                                                                                            <span className="text-[10px] font-semibold text-blue-700 pl-1.5 truncate select-none tracking-[0.01em]">
+                                                                                                {e.title}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        if (e.type === 'gantt_single') {
+                                                                            return (
+                                                                                <div key={e.id} className="h-[22px] flex items-center rounded-md border-l-[3px] border-blue-500 bg-blue-500/15 hover:bg-blue-500/25 transition-colors cursor-pointer relative z-10" onClick={(ev) => { ev.stopPropagation(); setSelectedEvent(e); }}>
+                                                                                    <span className="text-[10px] font-semibold text-blue-700 pl-1.5 truncate select-none tracking-[0.01em]">{e.title}</span>
+                                                                                </div>
+                                                                            );
+                                                                        }
+
+                                                                        const style = EVENT_STYLES[e.type] || EVENT_STYLES.task;
+                                                                        const time = formatTime(e.date);
+                                                                        const displayTitle = time ? `${time} ${e.title}` : e.title;
+                                                                        return (
+                                                                            <div key={j} className={`flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1.5 rounded-lg truncate border ${style.bg} ${style.text} border-${style.text.replace('text-', '')}/15 shadow-sm cursor-pointer hover:opacity-80 transition-opacity`} onClick={(ev) => { ev.stopPropagation(); setSelectedEvent(e); }}>
+                                                                                <style.icon className="w-3 h-3 shrink-0 opacity-80" />
+                                                                                <span className="truncate">{e.status === 'completed' ? <span className="line-through opacity-70">{displayTitle}</span> : displayTitle}</span>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                    {!isDayExpanded && hiddenCount > 0 && (
+                                                                        <button
+                                                                            onClick={(ev) => {
+                                                                                ev.stopPropagation();
+                                                                                setExpandedDays(prev => new Set(prev).add(dayNum));
+                                                                            }}
+                                                                            className="text-[10px] font-bold text-[#0071E3] hover:underline mt-0.5 pl-1"
+                                                                        >
+                                                                            +{hiddenCount} 更多
+                                                                        </button>
+                                                                    )}
+                                                                    {isDayExpanded && hiddenCount > 0 && (
+                                                                        <button
+                                                                            onClick={(ev) => {
+                                                                                ev.stopPropagation();
+                                                                                setExpandedDays(prev => { const n = new Set(prev); n.delete(dayNum); return n; });
+                                                                            }}
+                                                                            className="text-[10px] font-bold text-[#86868B] hover:underline mt-0.5 pl-1"
+                                                                        >
+                                                                            收起
+                                                                        </button>
+                                                                    )}
+                                                                </>
                                                             );
-                                                        })}
+                                                        })()}
                                                     </div>
                                                 </div>
                                             )}
@@ -799,6 +835,112 @@ export default function CalendarPage() {
                             儲存事項
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Event Detail Pop-up Modal */}
+            <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
+                <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden border-0 shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
+                    {selectedEvent && (() => {
+                        const style = EVENT_STYLES[selectedEvent.type] || EVENT_STYLES.task;
+                        const project = projects.find((p: any) => p.id === selectedEvent.projectId);
+                        const assignee = employees.find((emp: any) => emp.id === selectedEvent.assigneeId);
+                        const time = formatTime(selectedEvent.date);
+                        const eventDate = new Date(selectedEvent.date);
+                        return (
+                            <>
+                                {/* Header strip */}
+                                <div className={`${style.bg} px-6 py-5 border-b border-slate-100/60`}>
+                                    <div className="flex items-start gap-3">
+                                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center bg-white/80 ${style.text} shrink-0 shadow-sm`}>
+                                            <style.icon className="h-5 w-5" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <Badge className={`text-[10px] font-bold border-none mb-2 ${style.bg} ${style.text}`}>{style.label}</Badge>
+                                            <h3 className="text-[17px] font-bold text-[#1D1D1F] leading-snug break-words">{selectedEvent.title}</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Body */}
+                                <div className="px-6 py-5 space-y-4">
+                                    {/* Date & Time */}
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-xl bg-[#F5F5F7] flex items-center justify-center">
+                                            <Calendar className="h-4 w-4 text-[#86868B]" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[13px] font-semibold text-[#1D1D1F]">
+                                                {eventDate.toLocaleDateString('zh-HK', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+                                            </p>
+                                            {time && <p className="text-[12px] font-medium text-amber-600 mt-0.5">‣ {time}</p>}
+                                        </div>
+                                    </div>
+                                    {/* Project */}
+                                    {project && (
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-[#F5F5F7] flex items-center justify-center">
+                                                <Briefcase className="h-4 w-4 text-[#86868B]" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[13px] font-semibold text-[#1D1D1F] truncate">{project.projectCode} — {project.clientName}</p>
+                                                {project.estate && <p className="text-[11px] text-[#86868B] mt-0.5">📍 {project.estate}</p>}
+                                            </div>
+                                            <a href={`/projects/${project.id}`} className="p-2 rounded-lg hover:bg-[#F5F5F7] text-[#0071E3] transition-colors" title="前往專案">
+                                                <ExternalLink className="h-4 w-4" />
+                                            </a>
+                                        </div>
+                                    )}
+                                    {/* Assignee */}
+                                    {assignee && (
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-[#F5F5F7] flex items-center justify-center">
+                                                <MapPin className="h-4 w-4 text-[#86868B]" />
+                                            </div>
+                                            <p className="text-[13px] font-semibold text-[#1D1D1F]">指派給: {assignee.name}</p>
+                                        </div>
+                                    )}
+                                    {/* Gantt duration info */}
+                                    {(selectedEvent.type === 'gantt_span' || selectedEvent.type === 'gantt_single') && selectedEvent.ganttDuration && (
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-[#F5F5F7] flex items-center justify-center">
+                                                <Clock className="h-4 w-4 text-[#86868B]" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[13px] font-semibold text-[#1D1D1F]">工期: {selectedEvent.ganttDuration} 天</p>
+                                                {selectedEvent.ganttStartDate && <p className="text-[11px] text-[#86868B] mt-0.5">開始: {new Date(selectedEvent.ganttStartDate).toLocaleDateString('zh-HK')}</p>}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Status */}
+                                    <div className="pt-3 border-t border-[#E8E8ED]/60">
+                                        <div className="flex items-center justify-between">
+                                            <Badge variant="outline" className={`text-[11px] font-bold border-transparent ${selectedEvent.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                {selectedEvent.status === 'completed' ? '✅ 已完成' : '⏳ 進行中'}
+                                            </Badge>
+                                            {selectedEvent.type !== 'meeting' && !selectedEvent.type.startsWith('gantt') && (
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => { toggleTaskStatus(selectedEvent); setSelectedEvent(null); }}
+                                                        className="text-[12px] font-bold px-3 py-1.5 rounded-lg bg-[#F5F5F7] hover:bg-[#E8E8ED] text-[#424245] transition-colors"
+                                                    >
+                                                        {selectedEvent.status === 'completed' ? '還原' : '標記完成'}
+                                                    </button>
+                                                    {userRole === 'admin' && (
+                                                        <button
+                                                            onClick={() => { handleDeleteTask(selectedEvent.id); setSelectedEvent(null); }}
+                                                            className="text-[12px] font-bold px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
+                                                        >
+                                                            刪除
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        );
+                    })()}
                 </DialogContent>
             </Dialog>
 

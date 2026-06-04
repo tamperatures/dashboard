@@ -15,7 +15,7 @@ import {
   isValid
 } from 'date-fns';
 import { isHKHoliday } from '@/lib/dateUtils';
-import { Filter, ExternalLink } from 'lucide-react';
+import { Filter, ExternalLink, Printer } from 'lucide-react';
 import { CONSTRUCTION_PHASES, PHASE_COLORS as CONSTANT_PHASE_COLORS } from '@/lib/constants';
 import Link from 'next/link';
 
@@ -132,7 +132,20 @@ export function AdvancedGanttChart({ projects }: AdvancedGanttChartProps) {
   const SIDEBAR_WIDTH = 250; // px
 
   return (
-    <div className="bg-white rounded-[24px] shadow-sm border border-[#E8E8ED] overflow-hidden flex flex-col font-sans">
+    <div className="bg-white rounded-[24px] shadow-sm border border-[#E8E8ED] overflow-hidden flex flex-col font-sans" id="gantt-chart-container">
+      {/* Print-only Header */}
+      <div className="hidden print:block p-6 border-b border-[#E8E8ED] bg-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-[24px] font-bold text-[#1D1D1F] tracking-tight">適度裝修設計工程</h1>
+            <h2 className="text-[18px] font-semibold text-[#424245] mt-1">工程進度表 (Gantt Chart)</h2>
+          </div>
+          <div className="text-right text-[13px] text-[#86868B]">
+            <p>列印日期: {new Date().toLocaleDateString('zh-HK', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            {phaseFilter !== 'ALL' && <p className="mt-1">篩選工序: {phaseFilter}</p>}
+          </div>
+        </div>
+      </div>
       {/* Header and Legend */}
       <div className="p-5 border-b border-[#F5F5F7] bg-slate-50/50 flex flex-col gap-4 shrink-0">
         <div className="flex justify-between items-center">
@@ -148,6 +161,15 @@ export function AdvancedGanttChart({ projects }: AdvancedGanttChartProps) {
               <option value="ALL">全部顯示 (Show All)</option>
               {DEFAULT_PHASES.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold text-[#1D1D1F] bg-white border border-[#D1D1D6] hover:bg-[#F5F5F7] shadow-sm transition-all cursor-pointer print:hidden"
+            >
+              <Printer className="w-4 h-4" />
+              匯出 PDF
+            </button>
           </div>
         </div>
         
@@ -322,6 +344,11 @@ export function AdvancedGanttChart({ projects }: AdvancedGanttChartProps) {
                           {project.clientName}
                           <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </Link>
+                        {(project.estate || project.address) && (
+                          <div className="text-[11px] font-medium text-[#0071E3]/70 mt-0.5 truncate flex items-center gap-1" title={`${project.estate || ''} ${project.address || ''}`.trim()}>
+                            📍 {project.estate}{project.estate && project.address ? ' ' : ''}{project.address}
+                          </div>
+                        )}
                         <div className="text-[11px] font-bold text-[#86868B] mt-1 uppercase tracking-wider">
                           {validTasks.length > 0 ? (
                               <>{format(rowStart, 'MMM d')} - {format(rowEnd, 'MMM d')}</>

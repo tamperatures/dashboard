@@ -37,11 +37,11 @@ const ALL_PHASES = [
 
 // Stage → visible widget mapping (Cumulative to carry data forward)
 const STAGE_WIDGETS: Record<string, string[]> = {
-    'S01_客戶查詢': ['overview', 'meetings', 'notes'],
-    'S02_見客前準備': ['overview', 'design_links', 'meetings', 'notes'],
-    'S03_初步報價': ['overview', 'design_links', 'status', 'meetings', 'notes'],
-    'S04_見客後跟進': ['overview', 'design_links', 'status', 'meetings', 'notes'],
-    'S05_後續會面': ['overview', 'design_links', 'status', 'meetings', 'notes'],
+    'S01_客戶查詢': ['overview', 'image_upload', 'meetings', 'notes'],
+    'S02_見客前準備': ['overview', 'image_upload', 'design_links', 'meetings', 'notes'],
+    'S03_初步報價': ['overview', 'image_upload', 'design_links', 'status', 'meetings', 'notes'],
+    'S04_見客後跟進': ['overview', 'image_upload', 'design_links', 'status', 'meetings', 'notes'],
+    'S05_後續會面': ['overview', 'image_upload', 'design_links', 'status', 'meetings', 'notes'],
     'P06_工程啟動': ['overview', 'design_links', 'construction_team', 'notes'],
     'P07_工程進行中': ['overview', 'design_links', 'construction_team', 'construction_progress', 'notes'],
     'P08_工程完成': ['overview', 'design_links', 'construction_team', 'construction_progress', 'notes'],
@@ -64,6 +64,69 @@ const TIME_OPTIONS = Array.from({ length: 24 * 2 }).map((_, i) => {
     const mm = i % 2 === 0 ? '00' : '30';
     return `${hh}:${mm}`;
 });
+
+/**
+ * Client-side workflow phase enforcement (#5).
+ * Returns a list of unmet requirement labels (in Chinese) blocking advancement
+ * from currentStage → targetStage. Empty array = OK to advance.
+ *
+ * Mirrors the server-side check in `src/app/api/projects/[id]/route.ts` so the
+ * UI can give immediate feedback before round-tripping to the API.
+ */
+function validateStageClient(project: any, currentStage: string, targetStage: string): string[] {
+    const STAGE_ORDER = [
+        'S01_客戶查詢', 'S02_見客前準備', 'S03_初步報價', 'S04_見客後跟進',
+        'S05_後續會面', 'P06_工程啟動', 'P07_工程進行中', 'P08_工程完成',
+    ];
+    const cur = STAGE_ORDER.indexOf(currentStage);
+    const tgt = STAGE_ORDER.indexOf(targetStage);
+    if (cur < 0 || tgt < 0 || tgt <= cur) return [];
+
+    const missing: string[] = [];
+
+    if (currentStage === 'S01_客戶查詢' && tgt > cur) {
+        const meetings = project.meetings || [];
+        if (meetings.length === 0 && !project.meetingDateTime) missing.push('需要至少一次約見記錄');
+    }
+    if (currentStage === 'S02_見客前準備' && tgt > cur) {
+        if (!project.floorPlanLink) missing.push('需要平面圖連結');
+    }
+    if (currentStage === 'S03_初步報價' && tgt > cur) {
+        if (!project.quotationLink) missing.push('需要報價單連結');
+    }
+    if (currentStage === 'S05_後續會面' && targetStage === 'P06_工程啟動') {
+        if (project.status !== 'Signed') missing.push('項目狀態必須為「成功簽單」');
+        if (!project.contractDate) missing.push('需要簽約日期');
+    }
+    if (currentStage === 'P06_工程啟動' && targetStage === 'P07_工程進行中') {
+        const required: Array<[string, string]> = [
+            ['adminApplication', '入則申請'], ['insurance', '保險'],
+            ['tempUtilities', '臨時水電'], ['publicProtection', '公眾保護'],
+            ['itemProtection', '物品保護'],
+        ];
+        const phase = project.phase1SitePrep || {};
+        for (const [k, label] of required) {
+            if (!phase[k]) missing.push(`P06 工地準備：${label}`);
+        }
+    }
+    if (currentStage === 'P07_工程進行中' && targetStage === 'P08_工程完成') {
+        const REQUIRED: Array<{ phaseKey: string; label: string; fields: Array<[string, string]> }> = [
+            { phaseKey: 'phase2Demolition', label: '清拆', fields: [['survey','勘查'],['execution','清拆執行'],['noiseControl','噪音控制'],['wasteDisposal','廢物處理']] },
+            { phaseKey: 'phase3Plumbing', label: '水電', fields: [['brickwork','砌磚'],['trenching','開坑'],['positioning','定位'],['gasWork','煤氣']] },
+            { phaseKey: 'phase4Masonry', label: '泥水', fields: [['plastering','批盪'],['waterproofing','防水'],['tiling','鋪磚'],['leveling','找平']] },
+            { phaseKey: 'phase5Carpentry', label: '木工', fields: [['ceilingFeature','天花'],['wallPreparation','牆身'],['woodworkPainting','油漆']] },
+            { phaseKey: 'phase6Installation', label: '安裝', fields: [['furnitureAssembly','傢俬組裝'],['doorFloor','門板'],['fixtures','潔具']] },
+            { phaseKey: 'phase7PreInspection', label: '預驗收', fields: [['internalCheck','內檢'],['defectFix','修復'],['basicCleaning','清潔']] },
+        ];
+        for (const r of REQUIRED) {
+            const data = project[r.phaseKey] || {};
+            for (const [k, label] of r.fields) {
+                if (!data[k]) missing.push(`${r.label}：${label}`);
+            }
+        }
+    }
+    return missing;
+}
 
 export default function ProjectDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -99,7 +162,14 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     const [meetings, setMeetings] = useState<MeetingEntry[]>([]);
     const [newMeeting, setNewMeeting] = useState<MeetingEntry>({ dateTime: '', location: '', createdByDept: '' });
     const [notes, setNotes] = useState('');
+    // Structured remarks composer state (#6)
+    const [newRemark, setNewRemark] = useState('');
+    const [addingRemark, setAddingRemark] = useState(false);
     const [savingDetails, setSavingDetails] = useState(false);
+    // Photo PDF generation (#7)
+    const [photoSelectMode, setPhotoSelectMode] = useState(false);
+    const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
+    const [generatingPdf, setGeneratingPdf] = useState(false);
     // 工程進度 accordion state
     const [expandedPhases, setExpandedPhases] = useState<string[]>([]);
     const [expandedStageLogs, setExpandedStageLogs] = useState<Record<string, boolean>>({});
@@ -347,6 +417,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     const isDesignDept = userDepts.includes('設計部');
     const isSalesMarketing = userDepts.includes('推廣部') || userDepts.includes('銷售部');
     const canEditDesignLinks = userRole === 'admin' || isDesignDept;
+    // Strict link ownership: quotation belongs to Sales, floor plan belongs to Design
+    const canEditQuotationLink = userRole === 'admin' || isSalesMarketing;
+    const canEditFloorPlanLink = userRole === 'admin' || isDesignDept;
     const canEditMeetingsList = userRole === 'admin' || isSalesMarketing;
     const canEditStatus = userRole === 'admin' || isSalesMarketing;
     const canEditProjectOverview = userRole === 'admin' || isCurrentStageEditable || userDepts.includes('銷售部');
@@ -378,6 +451,13 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     const fastTrackNextStage = async () => {
         if (!canFastTrack) return;
         const targetDept = nextPhase.dept;
+
+        // Client-side workflow enforcement (#5)
+        const stageValidation = validateStageClient(project, project.stage, nextPhase.key);
+        if (stageValidation.length > 0) {
+            toast.error(`無法推進，仍有未完成項目：\n• ${stageValidation.join('\n• ')}`);
+            return;
+        }
         
         const confirmed = await confirm({
             title: '推進至下一階段',
@@ -433,6 +513,13 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                 return;
             }
 
+            // Client-side workflow enforcement (#5)
+            const stageValidation = validateStageClient(project, project.stage, newStageKey);
+            if (stageValidation.length > 0) {
+                toast.error(`無法推進，仍有未完成項目：\n• ${stageValidation.join('\n• ')}`);
+                return;
+            }
+
             const confirmed = await confirm({
                 title: '提出推進請求',
                 description: `確定要向管理員申請將項目推進至「${targetPhase?.label}」嗎？`,
@@ -452,7 +539,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                     fetchProject();
                 } else {
                     const data = await res.json();
-                    toast.error(data.error || '請求失敗');
+                    const detail = Array.isArray(data.missing) && data.missing.length > 0
+                        ? `：\n• ${data.missing.join('\n• ')}` : '';
+                    toast.error((data.error || '請求失敗') + detail);
                 }
             } catch {
                 toast.error('請求失敗');
@@ -464,6 +553,15 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
         const targetDept = targetPhase?.dept || '';
         const currentDept = ALL_PHASES[currentIdx]?.dept || '';
         const isCrossDept = targetDept !== '—' && currentDept !== targetDept;
+
+        // Client-side workflow enforcement for forward progression (#5)
+        if (!isGoingBack) {
+            const stageValidation = validateStageClient(project, project.stage, newStageKey);
+            if (stageValidation.length > 0) {
+                toast.error(`無法推進，仍有未完成項目：\n• ${stageValidation.join('\n• ')}`);
+                return;
+            }
+        }
 
         const confirmed = await confirm({
             title: isGoingBack ? '回退階段' : '更新階段',
@@ -497,6 +595,11 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             if (res.ok) {
                 toast.success(`已更新至 ${targetPhase?.label}`);
                 fetchProject();
+            } else {
+                const data = await res.json();
+                const detail = Array.isArray(data.missing) && data.missing.length > 0
+                    ? `：\n• ${data.missing.join('\n• ')}` : '';
+                toast.error((data.error || '更新失敗') + detail);
             }
         } catch {
             toast.error('更新失敗');
@@ -685,6 +788,121 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
         }
     };
 
+    // Archive / unarchive a project (#8) — available for P08 completed projects
+    const handleToggleArchive = async () => {
+        const willArchive = !project.archived;
+        const confirmed = await confirm({
+            title: willArchive ? '歸檔項目？' : '取消歸檔？',
+            description: willArchive
+                ? '歸檔後，此項目將從主項目列表隱藏，並移至「已歸檔」分頁。你仍可隨時還原。'
+                : '取消歸檔後，此項目將重新顯示於主項目列表。',
+            variant: willArchive ? 'warning' : 'info',
+            confirmText: willArchive ? '確認歸檔' : '確認還原',
+        });
+        if (!confirmed) return;
+        try {
+            const res = await fetch(`/api/projects/${projectId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ archived: willArchive })
+            });
+            if (res.ok) {
+                toast.success(willArchive ? '已歸檔項目' : '已還原項目');
+                if (willArchive) {
+                    router.push('/projects');
+                } else {
+                    fetchProject();
+                }
+            } else {
+                const data = await res.json();
+                toast.error(data.error || '操作失敗');
+            }
+        } catch {
+            toast.error('操作失敗');
+        }
+    };
+
+    // Generate a PDF from selected photos (#7)
+    // Uses the browser's native print-to-PDF via a dedicated print window.
+    // One image per page, fitted to A4. No external dependencies required.
+    const generatePhotoPdf = async (photos: any[]) => {
+        const selected = photos.filter(p => selectedPhotoIds.has(p.id) && !(p.url?.includes('.mp4') || p.url?.includes('.mov')));
+        if (selected.length === 0) {
+            toast.error('請選擇至少一張圖片（影片無法匯出）');
+            return;
+        }
+        setGeneratingPdf(true);
+        try {
+            const title = `${project.clientName || 'project'}-photos`;
+            const imagesHtml = selected.map((p, i) => `
+                <div class="page">
+                    <div class="caption">${(p.name || `相片 ${i + 1}`).replace(/</g, '&lt;')}</div>
+                    <img src="${p.url}" alt="photo-${i}" />
+                </div>
+            `).join('');
+
+            const html = `<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="utf-8" />
+<title>${title}</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif; }
+    .page {
+        page-break-after: always;
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+    }
+    .page:last-child { page-break-after: auto; }
+    .caption { font-size: 13px; color: #444; margin-bottom: 12px; font-weight: 600; }
+    img { max-width: 100%; max-height: 88vh; object-fit: contain; border: 1px solid #eee; }
+    @media print {
+        .page { height: 100vh; }
+    }
+</style>
+</head>
+<body>${imagesHtml}</body>
+</html>`;
+
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) {
+                toast.error('無法開啟列印視窗，請允許彈出視窗後再試');
+                setGeneratingPdf(false);
+                return;
+            }
+            printWindow.document.open();
+            printWindow.document.write(html);
+            printWindow.document.close();
+
+            // Wait for images to load before invoking print
+            const imgs = Array.from(printWindow.document.images);
+            await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(resolve => {
+                img.onload = resolve;
+                img.onerror = resolve;
+            })));
+
+            // Small delay to ensure layout settles
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+            }, 300);
+
+            toast.success(`已準備 ${selected.length} 張圖片，請於列印對話框選擇「另存為 PDF」`);
+            setPhotoSelectMode(false);
+            setSelectedPhotoIds(new Set());
+        } catch (err: any) {
+            toast.error(err.message || '生成 PDF 失敗');
+        } finally {
+            setGeneratingPdf(false);
+        }
+    };
+
     if (loading) return <div className="p-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-400" /></div>;
     if (!project) return null;
     if (!project) return null;
@@ -718,6 +936,20 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                             <Badge variant={project.status === 'Signed' ? 'default' : 'secondary'} className="text-xs">
                                                 {project.status === 'Signed' ? '✓ 已簽單' : '未成交'}
                                             </Badge>
+                                        )}
+                                        {/* Archive button — P08 or already archived (#8) */}
+                                        {(project.stage === 'P08_工程完成' || project.archived) && (userRole === 'admin' || !project.archived) && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleToggleArchive}
+                                                className={`h-7 text-xs font-bold rounded-lg ml-1 ${project.archived ? 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100' : 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100'}`}
+                                            >
+                                                {project.archived ? '📂 取消歸檔' : '📦 歸檔'}
+                                            </Button>
+                                        )}
+                                        {project.archived && (
+                                            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700 bg-amber-50 ml-1">已歸檔</Badge>
                                         )}
                                     </div>
                                 </div>
@@ -1045,6 +1277,11 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                             </CardHeader>
                                             <CardContent className="px-6 pt-3 pb-6">
                                                 <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                                                    {/* Static project name — NOT editable (fix #2) */}
+                                                    <div className="col-span-2">
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">項目名稱</p>
+                                                        <p className="text-sm font-bold text-slate-900">{project.clientName}的{project.renovationType || '裝修工程'}</p>
+                                                    </div>
                                                     <div>
                                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">物業類型</p>
                                                         <p className="text-xs font-semibold text-slate-700">{project.propertyType || '—'}</p>
@@ -1070,6 +1307,63 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                         <p className="text-xs font-semibold text-slate-700">{project.startDate || '—'}</p>
                                                     </div>
                                                 </div>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Widget: 客戶來料/現場照片 Quick Upload — S01-S05 (#3) */}
+                                    {(STAGE_WIDGETS[project.stage] || []).includes('image_upload') && (
+                                        <Card>
+                                            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                                                <CardTitle className="text-base font-bold flex items-center gap-2">
+                                                    <ImageIcon className="h-5 w-5 text-sky-500" /> 客戶來料 / 現場照片
+                                                </CardTitle>
+                                                {(isCurrentStageEditable || userRole === 'admin') && (
+                                                    <Button
+                                                        variant="outline" size="sm"
+                                                        onClick={() => { setForcedFileType('photo'); setPhotoFolder('inquiry'); photoInputRef.current?.click(); }}
+                                                        disabled={uploading}
+                                                        className="h-7 gap-1.5 text-xs font-bold text-sky-700 border-sky-200 bg-sky-50 hover:bg-sky-100 rounded-lg"
+                                                    >
+                                                        {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />} 上傳照片
+                                                    </Button>
+                                                )}
+                                            </CardHeader>
+                                            <CardContent className="px-5 pt-2 pb-5">
+                                                {(() => {
+                                                    const inquiryPhotos = (project.files || []).filter(
+                                                        (f: any) => f.type === 'photo' && (f.folder === 'inquiry' || f.folder === 'uncategorized' || !f.folder)
+                                                    ).sort((a: any, b: any) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime());
+                                                    if (inquiryPhotos.length === 0) {
+                                                        return (
+                                                            <div className="text-center py-6 text-[13px] font-semibold text-slate-400 border border-dashed border-slate-200 bg-slate-50/50 rounded-xl">
+                                                                尚無客戶照片，點擊上方按鈕上傳
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            <div className="grid grid-cols-3 gap-2">
+                                                                {inquiryPhotos.slice(0, 6).map((photo: any) => (
+                                                                    <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer"
+                                                                        className="aspect-square rounded-lg overflow-hidden border border-slate-200 hover:border-sky-300 transition-all shadow-sm hover:shadow-md"
+                                                                    >
+                                                                        <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" />
+                                                                    </a>
+                                                                ))}
+                                                            </div>
+                                                            {inquiryPhotos.length > 6 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setActiveTab('photos')}
+                                                                    className="text-[11px] font-bold text-sky-600 hover:text-sky-700 hover:underline"
+                                                                >
+                                                                    查看全部 {inquiryPhotos.length} 張照片 →
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </CardContent>
                                         </Card>
                                     )}
@@ -1511,7 +1805,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                 <CardTitle className="text-base font-bold flex items-center gap-2">
                                                     <LinkIcon className="h-5 w-5 text-blue-500" /> 設計圖連結 (Google Drive)
                                                 </CardTitle>
-                                                {(canEditDesignLinks || isCurrentStageEditable || userRole === 'admin') && (
+                                                {(canEditQuotationLink || canEditFloorPlanLink || isCurrentStageEditable || userRole === 'admin') && (
                                                     <Button variant="ghost" size="icon" onClick={saveDetails} disabled={savingDetails} className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md">
                                                         {savingDetails ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-4 w-4" />}
                                                     </Button>
@@ -1527,7 +1821,8 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                         報價單 / 企劃書連結
                                                     </label>
                                                     <Input
-                                                        disabled={!isCurrentStageEditable && !canEditDesignLinks && userRole !== 'admin'}
+                                                        disabled={!canEditQuotationLink}
+                                                        title={!canEditQuotationLink ? '只有推廣部 / 銷售部 / 管理員可編輯報價單連結' : undefined}
                                                         value={quotationLink}
                                                         onChange={e => setQuotationLink(e.target.value)}
                                                         placeholder="https://drive.google.com/drive/folders/..."
@@ -1549,7 +1844,8 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                         平面圖連結
                                                     </label>
                                                     <Input
-                                                        disabled={!canEditDesignLinks && userRole !== 'admin'}
+                                                        disabled={!canEditFloorPlanLink}
+                                                        title={!canEditFloorPlanLink ? '只有設計部 / 管理員可編輯平面圖連結' : undefined}
                                                         value={floorPlanLink}
                                                         onChange={e => setFloorPlanLink(e.target.value)}
                                                         placeholder="https://drive.google.com/drive/folders/..."
@@ -1569,7 +1865,8 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                         SketchUp 3D 模型
                                                     </label>
                                                     <Input
-                                                        disabled={!canEditDesignLinks && userRole !== 'admin'}
+                                                        disabled={!canEditFloorPlanLink}
+                                                        title={!canEditFloorPlanLink ? '只有設計部 / 管理員可編輯 SketchUp 連結' : undefined}
                                                         value={sketchUpLink}
                                                         onChange={e => setSketchUpLink(e.target.value)}
                                                         placeholder="https://drive.google.com/drive/folders/..."
@@ -1585,25 +1882,140 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                         </Card>
                                     )}
 
-                                    {/* Widget: 附加備註 — all stages */}
+                                    {/* Widget: 附加備註 — all stages (#6 Structured Remarks) */}
                                     {(STAGE_WIDGETS[project.stage] || []).includes('notes') && (
                                         <Card>
                                             <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-                                                <CardTitle className="text-base font-bold">附加備註</CardTitle>
-                                                {(isCurrentStageEditable || userRole === 'admin') && (
-                                                    <Button variant="ghost" size="icon" onClick={saveDetails} disabled={savingDetails} className="h-7 w-7 text-slate-600 hover:text-slate-700 hover:bg-slate-100 rounded-md">
-                                                        {savingDetails ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-4 w-4" />}
-                                                    </Button>
-                                                )}
+                                                <CardTitle className="text-base font-bold flex items-center gap-2">
+                                                    <FileText className="h-5 w-5 text-slate-500" /> 附加備註
+                                                </CardTitle>
                                             </CardHeader>
-                                            <CardContent className="px-6 pt-3 pb-6">
-                                                <textarea
-                                                    disabled={!isCurrentStageEditable && userRole !== 'admin'}
-                                                    value={notes}
-                                                    onChange={e => setNotes(e.target.value)}
-                                                    placeholder="沒有備註內容"
-                                                    className="w-full min-h-[120px] text-[13px] text-slate-700 leading-relaxed bg-slate-100/80 hover:bg-slate-200/50 transition-colors rounded-xl border-transparent p-4 focus:outline-none focus:ring-2 focus:ring-slate-300/50 resize-none placeholder:italic placeholder:text-slate-400 disabled:opacity-50"
-                                                />
+                                            <CardContent className="px-6 pt-3 pb-6 space-y-3">
+                                                {/* Legacy notes (read-only, shown only if there are no structured remarks AND legacy text exists) */}
+                                                {project.notes && (!project.remarks || project.remarks.length === 0) && (
+                                                    <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-4 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">舊版備註 (Legacy)</span>
+                                                            <span className="text-[10px] text-amber-600/70">只讀</span>
+                                                        </div>
+                                                        <p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">{project.notes}</p>
+                                                    </div>
+                                                )}
+
+                                                {/* Structured Remarks list */}
+                                                {(project.remarks || []).length === 0 ? (
+                                                    !project.notes && (
+                                                        <div className="text-center py-6 text-[13px] font-semibold text-slate-400 border border-dashed border-slate-200 bg-slate-50/50 rounded-xl">
+                                                            尚無備註，於下方新增第一則備註
+                                                        </div>
+                                                    )
+                                                ) : (
+                                                    <div className="space-y-2.5">
+                                                        {(project.remarks || []).slice().sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((r: any) => {
+                                                            const canDelete = userRole === 'admin' || (r.authorDept && userDepts.includes(r.authorDept));
+                                                            const dt = r.createdAt ? new Date(r.createdAt) : null;
+                                                            const dtLabel = dt ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` : '';
+                                                            return (
+                                                                <div key={r.id} className="bg-slate-50 hover:bg-slate-100/70 border-transparent rounded-xl p-4 transition-colors">
+                                                                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            <span className="text-[12px] font-bold text-slate-800">{r.authorName || '未知'}</span>
+                                                                            {r.authorDept && <Badge variant="outline" className="text-[9px] py-0 px-1.5 bg-white border-slate-200 text-slate-500">{r.authorDept}</Badge>}
+                                                                            <span className="text-[10px] text-slate-400 font-medium">{dtLabel}</span>
+                                                                        </div>
+                                                                        {canDelete ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={async () => {
+                                                                                    const confirmed = await confirm({
+                                                                                        title: '刪除此則備註？',
+                                                                                        description: '此操作無法復原。',
+                                                                                        variant: 'danger',
+                                                                                        confirmText: '確認刪除',
+                                                                                    });
+                                                                                    if (!confirmed) return;
+                                                                                    try {
+                                                                                        const res = await fetch(`/api/projects/${projectId}`, {
+                                                                                            method: 'PUT',
+                                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                                            body: JSON.stringify({ deleteRemarkId: r.id }),
+                                                                                        });
+                                                                                        if (res.ok) {
+                                                                                            toast.success('已刪除備註');
+                                                                                            fetchProject();
+                                                                                        } else {
+                                                                                            const data = await res.json();
+                                                                                            toast.error(data.error || '刪除失敗');
+                                                                                        }
+                                                                                    } catch {
+                                                                                        toast.error('刪除失敗');
+                                                                                    }
+                                                                                }}
+                                                                                title={`只有管理員或「${r.authorDept || '原作者部門'}」可以刪除`}
+                                                                                className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                            </button>
+                                                                        ) : (
+                                                                            <span
+                                                                                className="text-[9px] text-slate-300 italic shrink-0"
+                                                                                title={`只有管理員或「${r.authorDept || '原作者部門'}」可以刪除`}
+                                                                            >🔒</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">{r.content}</p>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {/* Add-remark composer */}
+                                                {(isCurrentStageEditable || userRole === 'admin' || userDepts.length > 0) && (
+                                                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                                                        <textarea
+                                                            value={newRemark}
+                                                            onChange={e => setNewRemark(e.target.value)}
+                                                            placeholder="新增備註內容…"
+                                                            rows={3}
+                                                            className="w-full text-[13px] text-slate-700 leading-relaxed bg-slate-100/80 hover:bg-slate-200/50 transition-colors rounded-xl border-transparent p-3 focus:outline-none focus:ring-2 focus:ring-slate-300/50 resize-none placeholder:italic placeholder:text-slate-400"
+                                                        />
+                                                        <div className="flex justify-end">
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                disabled={!newRemark.trim() || addingRemark}
+                                                                onClick={async () => {
+                                                                    const content = newRemark.trim();
+                                                                    if (!content) return;
+                                                                    setAddingRemark(true);
+                                                                    try {
+                                                                        const res = await fetch(`/api/projects/${projectId}`, {
+                                                                            method: 'PUT',
+                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                            body: JSON.stringify({ addRemark: { content } }),
+                                                                        });
+                                                                        if (res.ok) {
+                                                                            setNewRemark('');
+                                                                            toast.success('已新增備註');
+                                                                            fetchProject();
+                                                                        } else {
+                                                                            const data = await res.json();
+                                                                            toast.error(data.error || '新增失敗');
+                                                                        }
+                                                                    } catch {
+                                                                        toast.error('新增失敗');
+                                                                    } finally {
+                                                                        setAddingRemark(false);
+                                                                    }
+                                                                }}
+                                                                className="h-8 gap-1.5 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4"
+                                                            >
+                                                                {addingRemark ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} 新增備註
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </CardContent>
                                         </Card>
                                     )}
@@ -1714,10 +2126,15 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                             <Select value={photoFolder} onValueChange={setPhotoFolder}>
                                                 <SelectTrigger className="h-9 w-[200px] text-xs bg-slate-50 border-slate-200 rounded-lg shadow-none">
                                                     <span className="truncate font-semibold text-slate-600">
-                                                        {photoFolder === 'uncategorized' ? '📁 未分類' : CONSTRUCTION_PHASES.find(p => p.key === photoFolder)?.icon + ' ' + CONSTRUCTION_PHASES.find(p => p.key === photoFolder)?.label || photoFolder}
-                                                    </span>
+                                                    {photoFolder === 'uncategorized' ? '📁 未分類'
+                                                        : photoFolder === 'inquiry' ? '🔍 初始查詢 / 客戶來料'
+                                                        : CONSTRUCTION_PHASES.find(p => p.key === photoFolder)?.icon + ' ' + CONSTRUCTION_PHASES.find(p => p.key === photoFolder)?.label || photoFolder}
+                                                </span>
                                                 </SelectTrigger>
                                                 <SelectContent className="border-slate-100 shadow-xl rounded-xl bg-white/95 backdrop-blur-md p-1">
+                                                    <SelectItem value="inquiry" className="rounded-lg text-xs font-semibold focus:bg-slate-100/80 my-0.5 cursor-pointer py-2">
+                                                        <span className="flex items-center gap-2">🔍 初始查詢 / 客戶來料</span>
+                                                    </SelectItem>
                                                     {CONSTRUCTION_PHASES.map(phase => (
                                                         <SelectItem key={phase.key} value={phase.key} className="rounded-lg text-xs font-semibold focus:bg-slate-100/80 my-0.5 cursor-pointer py-2">
                                                             <span className="flex items-center gap-2">{phase.icon} {phase.label}</span>
@@ -1728,6 +2145,15 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                     </SelectItem>
                                                 </SelectContent>
                                             </Select>
+                                            {/* Image to PDF toggle (#7) */}
+                                            <Button
+                                                variant={photoSelectMode ? 'default' : 'outline'}
+                                                size="sm"
+                                                onClick={() => { setPhotoSelectMode(!photoSelectMode); setSelectedPhotoIds(new Set()); }}
+                                                className={`h-9 gap-1.5 text-xs font-bold rounded-lg ${photoSelectMode ? 'bg-violet-600 hover:bg-violet-700 text-white' : 'text-violet-700 border-violet-200 bg-violet-50 hover:bg-violet-100'}`}
+                                            >
+                                                <Printer className="w-3.5 h-3.5" /> {photoSelectMode ? '取消選取' : '匯出 PDF'}
+                                            </Button>
                                             <Button onClick={() => { setForcedFileType('photo'); photoInputRef.current?.click(); }} disabled={uploading} className="h-9 gap-1.5 text-xs font-bold">
                                                 {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} 上傳至此分類
                                             </Button>
@@ -1751,8 +2177,14 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                             );
                                         }
 
-                                        // Build folder groups: 10 phases + uncategorized
+                                        // Build folder groups: inquiry + 10 phases + uncategorized
                                         const folderGroups = [
+                                            {
+                                                key: 'inquiry',
+                                                label: '初始查詢 / 客戶來料',
+                                                icon: '🔍',
+                                                photos: allPhotos.filter((p: any) => p.folder === 'inquiry'),
+                                            },
                                             ...CONSTRUCTION_PHASES.map(phase => ({
                                                 key: phase.key,
                                                 label: phase.label,
@@ -1774,6 +2206,41 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                     <ImageIcon className="w-4 h-4 text-slate-400" />
                                                     共 {allPhotos.length} 張照片/影片，分佈於 {folderGroups.length} 個分類
                                                 </div>
+
+                                                {/* PDF Select-mode action bar (#7) */}
+                                                {photoSelectMode && (
+                                                    <div className="flex items-center justify-between gap-3 bg-violet-50 border-2 border-violet-200 rounded-xl px-4 py-3 sticky top-2 z-20 shadow-sm">
+                                                        <div className="flex items-center gap-3 text-xs font-bold text-violet-900">
+                                                            <Printer className="w-4 h-4 text-violet-600" />
+                                                            已選取 <span className="text-base text-violet-700">{selectedPhotoIds.size}</span> 張圖片
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                variant="outline" size="sm"
+                                                                onClick={() => {
+                                                                    const allImageIds = allPhotos.filter((p: any) => !(p.url?.includes('.mp4') || p.url?.includes('.mov'))).map((p: any) => p.id);
+                                                                    setSelectedPhotoIds(new Set(allImageIds));
+                                                                }}
+                                                                className="h-7 text-xs font-bold border-violet-200 text-violet-700 hover:bg-violet-100"
+                                                            >全選</Button>
+                                                            <Button
+                                                                variant="outline" size="sm"
+                                                                onClick={() => setSelectedPhotoIds(new Set())}
+                                                                disabled={selectedPhotoIds.size === 0}
+                                                                className="h-7 text-xs font-bold border-slate-200 text-slate-600 hover:bg-slate-100"
+                                                            >清除</Button>
+                                                            <Button
+                                                                size="sm"
+                                                                disabled={selectedPhotoIds.size === 0 || generatingPdf}
+                                                                onClick={() => generatePhotoPdf(allPhotos)}
+                                                                className="h-7 text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
+                                                            >
+                                                                {generatingPdf ? <Loader2 className="w-3 h-3 animate-spin" /> : <Printer className="w-3 h-3" />}
+                                                                生成 PDF
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                                 {folderGroups.map(folder => (
                                                     <div key={folder.key} className="border border-slate-200 bg-white rounded-2xl overflow-hidden shadow-sm">
@@ -1799,10 +2266,32 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
                                                                     {folder.photos
                                                                         .sort((a: any, b: any) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())
-                                                                        .map((photo: any) => (
-                                                                        <div key={photo.id} className="group relative rounded-xl overflow-hidden bg-white border border-slate-200 hover:border-blue-300 transition-all shadow-sm hover:shadow-md">
+                                                                        .map((photo: any) => {
+                                                                            const isVideo = photo.url?.includes('.mp4') || photo.url?.includes('.mov');
+                                                                            const isSelected = selectedPhotoIds.has(photo.id);
+                                                                            const selectable = photoSelectMode && !isVideo;
+                                                                            return (
+                                                                        <div key={photo.id} className={`group relative rounded-xl overflow-hidden bg-white border transition-all shadow-sm hover:shadow-md ${isSelected ? 'border-violet-500 ring-2 ring-violet-300' : 'border-slate-200 hover:border-blue-300'}`}>
+                                                                            {selectable ? (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        setSelectedPhotoIds(prev => {
+                                                                                            const next = new Set(prev);
+                                                                                            if (next.has(photo.id)) next.delete(photo.id); else next.add(photo.id);
+                                                                                            return next;
+                                                                                        });
+                                                                                    }}
+                                                                                    className="block w-full aspect-square relative overflow-hidden"
+                                                                                >
+                                                                                    <img src={photo.url} alt={photo.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                                                    <div className={`absolute top-2 left-2 w-6 h-6 rounded-md flex items-center justify-center transition-all ${isSelected ? 'bg-violet-600 text-white shadow-md' : 'bg-white/90 border-2 border-slate-300 text-transparent'}`}>
+                                                                                        <CheckCircle2 className="w-4 h-4" />
+                                                                                    </div>
+                                                                                </button>
+                                                                            ) : (
                                                                             <a href={photo.url} target="_blank" rel="noreferrer" className="block w-full aspect-square relative overflow-hidden">
-                                                                                {photo.url?.includes('.mp4') || photo.url?.includes('.mov') ? (
+                                                                                {isVideo ? (
                                                                                     <video src={photo.url} className="w-full h-full object-cover" muted />
                                                                                 ) : (
                                                                                     <img src={photo.url} alt={photo.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -1818,6 +2307,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                                                     </button>
                                                                                 )}
                                                                             </a>
+                                                                            )}
                                                                             {/* Title + Timestamp — always visible */}
                                                                             <div className="px-2.5 py-2 border-t border-slate-100">
                                                                                 <p className="text-[11px] font-semibold text-slate-700 line-clamp-1 leading-snug">{photo.name}</p>
@@ -1826,7 +2316,8 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                                                                                 </p>
                                                                             </div>
                                                                         </div>
-                                                                    ))}
+                                                                            );
+                                                                        })}
                                                                 </div>
                                                             </div>
                                                         )}
